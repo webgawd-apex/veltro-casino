@@ -91,7 +91,7 @@ export default function CrashCanvas({ multiplier, status }) {
   return (
     <div className="relative flex-1 flex flex-col bg-[#050505] overflow-hidden rounded-3xl m-4 border border-white/5 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]">
       {/* Dynamic Multiplier Display */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 pt-12 lg:pt-0">
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
         <div className="flex flex-col items-center">
           {isBetting ? (
             <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500">
