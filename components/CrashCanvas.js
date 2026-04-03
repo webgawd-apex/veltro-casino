@@ -89,7 +89,7 @@ export default function CrashCanvas({ multiplier, status }) {
   }, [multiplier, status]); // Redraw when multiplier or status changes
 
   return (
-    <div className="relative flex-1 flex flex-col bg-[#050505] overflow-hidden rounded-3xl m-4 border border-white/5 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]">
+    <div className="relative flex-1 flex flex-col bg-[#050505] overflow-hidden rounded-3xl m-2 md:m-4 border border-white/5 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]">
       {/* Dynamic Multiplier Display */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
         <div className="flex flex-col items-center">

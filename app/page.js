@@ -65,7 +65,7 @@ export default function Home() {
         {/* Graph Area */}
         <div className="flex-1 min-w-0 flex flex-col order-1 lg:order-2">
           <HistoryBar history={gameState.history} />
-          <div className="flex-1 p-2 lg:p-4 min-h-[450px] lg:min-h-0">
+          <div className="flex-1 p-2 lg:p-4 h-[500px] lg:h-full lg:min-h-0">
              <CrashCanvas 
                 multiplier={gameState.multiplier} 
                 status={gameState.status} 
