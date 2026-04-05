@@ -28,7 +28,7 @@ export default function CrashCanvas({ multiplier, status }) {
     Howler.autoUnlock = true;
     explosionSound.current = new Howl({
       src: ['/crash-ex-sfx.mp3'],
-      volume: 1.0,
+      volume: 0.15,
       html5: false, // Local asset, use Web Audio for low-latency
       preload: true
     });
