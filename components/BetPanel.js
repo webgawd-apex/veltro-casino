@@ -127,7 +127,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
           id="cashout-button" 
           onClick={handleCashOut}
           disabled={isLoading}
-          className="group mt-auto w-full h-20 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-2xl shadow-emerald-500/30 flex items-center justify-center gap-3"
+          className="group mt-auto w-full h-20 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3"
         >
           {`CASH OUT ${(activeUserBet.amount * multiplier).toFixed(2)} SOL`}
         </button>
@@ -136,7 +136,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
           id="bet-button" 
           onClick={handlePlaceBet}
           disabled={isLoading || status === 'RUNNING' || isActivelyPlaying}
-          className="group mt-auto w-full h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-2xl shadow-purple-500/30 flex items-center justify-center gap-3 disabled:opacity-75 disabled:pointer-events-none"
+          className="group mt-auto w-full h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:opacity-75 disabled:pointer-events-none"
         >
           {isLoading ? "WAITING FOR WALLET..." : "PLACE BET"}
           {!isLoading && (

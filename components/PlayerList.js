@@ -4,7 +4,7 @@ export default function PlayerList({ players = [] }) {
   const totalPooled = players.reduce((acc, p) => acc + (p.amount || 0), 0);
 
   return (
-    <div className="w-full lg:w-80 flex flex-col glass border-l border-white/5 overflow-hidden">
+    <div className="w-full h-full flex flex-col glass border-white/5 overflow-hidden border-l border-t lg:border-t-0">
       <div className="p-4 border-b border-white/5 bg-white/2">
         <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
           <span>Active Players</span>

@@ -39,9 +39,10 @@ app.prepare().then(() => {
     import("./lib/game/engine.js"),
     import("./lib/game/players.js"),
     import("./lib/game/state.js"),
-    import("./lib/game/payouts.js")
+    import("./lib/game/payouts.js"),
+    import("./lib/game/coinflip/engine.js")
   ])
-    .then(([engine, players, state, payouts]) => {
+    .then(([engine, players, state, payouts, coinflip]) => {
       engineObj = engine;
       playersStore = players;
       stateStore = state;
@@ -51,6 +52,11 @@ app.prepare().then(() => {
       // engine.js uses updateState() so we will let engine broadcast normally,
       // but we will manually broadcast player updates when they happen!
       engine.setIO(io);
+
+      // Coinflip specific
+      global.coinflipEngine = new coinflip.CoinflipEngine(io);
+      global.coinflipEngine.start();
+
       console.log("> Game Engine & stores loaded");
     })
     .catch((err) => {
