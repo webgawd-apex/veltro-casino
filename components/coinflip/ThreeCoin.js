@@ -97,7 +97,7 @@ function CoinMesh({ selectedSide, isFlipping, result }) {
 
 export default function ThreeCoin({ selectedSide = 'HEADS', isFlipping = false, result = null }) {
   return (
-    <div className="w-full h-[250px] md:h-[300px] relative pointer-events-none mx-auto scale-90 md:scale-100 mb-2">
+    <div className="w-[750px] h-[300px] relative pointer-events-none mx-auto scale-90 md:scale-100">
       {/* Subtle Background Glow */}
       <div className="absolute inset-0 bg-radial-gradient from-zinc-500/5 to-transparent blur-3xl opacity-30" />
       

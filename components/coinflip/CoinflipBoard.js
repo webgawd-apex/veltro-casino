@@ -4,8 +4,8 @@ import ThreeCoin from './ThreeCoin';
 
 export default function CoinflipBoard({ selectedSide, isFlipping, result, winStatus }) {
   return (
-    <div className="flex flex-col items-center justify-center p-4 relative z-10 w-full mb-4">
-      <div className="flex flex-col items-center justify-center space-y-4">
+    <div className="flex flex-col items-center justify-center pt-2 pb-0 px-4 pl-4 lg:pl-10 relative z-10 w-full mb-0">
+      <div className="flex flex-col items-center justify-center space-y-2">
         <ThreeCoin selectedSide={selectedSide} isFlipping={isFlipping} result={result} />
         
         {/* Dynamic Display */}

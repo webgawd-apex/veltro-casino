@@ -103,7 +103,7 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 md:gap-6 w-full max-w-sm mx-auto p-4 md:p-0">
+    <div className="flex flex-col items-center gap-4 w-full max-w-sm mx-auto">
       
       {gameState === 'RESULT' ? (
          <button 

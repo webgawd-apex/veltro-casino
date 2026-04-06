@@ -80,15 +80,15 @@ export default function CoinflipPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-zinc-950 text-zinc-100 selection:bg-purple-500/30">
+    <div className="flex flex-col min-h-screen overflow-y-auto bg-zinc-950 text-zinc-100 selection:bg-purple-500/30">
       <Header />
       
       <main className="flex-1 flex flex-col lg:flex-row relative bg-[#050912]">
-        <div className="flex-1 flex flex-col justify-center items-center relative z-20 min-w-0 order-1 p-4 lg:p-8 min-h-[550px]">
+        <div className="flex-1 flex flex-col justify-center items-center relative z-0 min-w-0 order-1 p-4 lg:p-8">
           {/* Constrained Blue Rain for loss state */}
           {gameState === 'RESULT' && winStatus === 'loss' && <CoinflipRain />}
           
-          <div className="flex flex-col items-center justify-center space-y-4 max-w-2xl w-full z-30">
+          <div className="flex flex-col items-center justify-center space-y-4 max-w-[400px] w-full">
              {/* The Interactive Coin */}
              <CoinflipBoard 
                 selectedSide={choice} 
