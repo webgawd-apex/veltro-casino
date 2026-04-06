@@ -88,7 +88,7 @@ export default function CoinflipPage() {
           {/* Constrained Blue Rain for loss state */}
           {gameState === 'RESULT' && winStatus === 'loss' && <CoinflipRain />}
           
-          <div className="flex flex-col items-center justify-center space-y-4 max-w-[400px] w-full z-30">
+          <div className="flex flex-col items-center justify-center space-y-4 max-w-2xl w-full z-30">
              {/* The Interactive Coin */}
              <CoinflipBoard 
                 selectedSide={choice} 
