@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Howl, Howler } from 'howler';
 
-export default function CrashCanvas({ multiplier, status }) {
+export default function CrashCanvas({ multiplier, status, targetStartTime }) {
   const canvasRef = useRef(null);
   const rocketImg = useRef(null);
   const smokeImg = useRef(null);
@@ -12,6 +12,7 @@ export default function CrashCanvas({ multiplier, status }) {
   const crashPoint = useRef({ x: 0, y: 0 });
   const [crashProgress, setCrashProgress] = useState(0);
   const animationFrameId = useRef(null);
+  const [countdown, setCountdown] = useState(30);
 
   const isCrashed = status === 'CRASHED';
   const isBetting = status === 'BETTING';
@@ -50,6 +51,18 @@ export default function CrashCanvas({ multiplier, status }) {
       window.removeEventListener('touchstart', unlockAudio);
     };
   }, []);
+
+  // Update Countdown Timer
+  useEffect(() => {
+    let intervalId;
+    if (isBetting && targetStartTime) {
+      intervalId = setInterval(() => {
+        const remaining = Math.max(0, Math.ceil((targetStartTime - Date.now()) / 1000));
+        setCountdown(remaining);
+      }, 100);
+    }
+    return () => clearInterval(intervalId);
+  }, [isBetting, targetStartTime]);
 
   // 2. Crash Animation Controller
   useEffect(() => {
@@ -245,10 +258,7 @@ export default function CrashCanvas({ multiplier, status }) {
         <div className="flex flex-col items-center">
           {isBetting ? (
             <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500">
-               <span className="text-4xl md:text-6xl font-black text-white/20 uppercase tracking-[0.2em] mb-4">Starting...</span>
-               <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-500 animate-progress" style={{ width: '100%' }} />
-               </div>
+               <span className="text-xl md:text-3xl font-black text-white/50 uppercase tracking-[0.2em] mb-4">Game starts in <span className="text-purple-400">{countdown}</span> seconds</span>
             </div>
           ) : (
             <>

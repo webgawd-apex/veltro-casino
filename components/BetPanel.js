@@ -30,6 +30,11 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
       return;
     }
 
+    if (status !== 'BETTING') {
+      alert("Game has started, please wait for the next game to bet!");
+      return;
+    }
+
     try {
       setIsLoading(true);
       const parsedAmount = parseFloat(amount);
@@ -135,11 +140,11 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
         <button 
           id="bet-button" 
           onClick={handlePlaceBet}
-          disabled={isLoading || status === 'RUNNING' || isActivelyPlaying}
+          disabled={isLoading || status !== 'BETTING' || isActivelyPlaying}
           className="group mt-auto w-full h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:opacity-75 disabled:pointer-events-none"
         >
-          {isLoading ? "WAITING FOR WALLET..." : "PLACE BET"}
-          {!isLoading && (
+          {isLoading ? "WAITING FOR WALLET..." : status !== 'BETTING' ? "WAIT FOR NEXT ROUND" : "PLACE BET"}
+          {!isLoading && status === 'BETTING' && (
             <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>

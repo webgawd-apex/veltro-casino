@@ -69,6 +69,7 @@ export default function Home() {
              <CrashCanvas 
                 multiplier={gameState.multiplier} 
                 status={gameState.status} 
+                targetStartTime={gameState.targetStartTime}
              />
           </div>
         </div>
