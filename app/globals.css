@@ -22,7 +22,6 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-  overflow: hidden; /* Prevent scrolling for the full-height app */
 }
 
 /* Custom Scrollbar for a premium feel */
