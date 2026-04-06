@@ -12,7 +12,7 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
     if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
     if (process.env.NEXT_PUBLIC_API_BASE_URL) return process.env.NEXT_PUBLIC_API_BASE_URL;
     if (typeof window !== "undefined" && window.location.hostname === "localhost") return "http://localhost:10000";
-    return "https://hate-casino.onrender.com";
+    return "https://veltro-casino.onrender.com";
   };
   const apiBase = getApiBase();
   const { connection } = useConnection();

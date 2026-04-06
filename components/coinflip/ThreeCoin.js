@@ -15,7 +15,7 @@ function CoinMesh({ selectedSide, isFlipping, result }) {
   const meshRef = useRef();
   
   // STEP 5: Apply Transparent Textures (Fast loading)
-  const headsTexture = useTexture('/hate-casino-nobg.png');
+  const headsTexture = useTexture('/veltro-casino-nobg.png');
   const tailsTexture = useTexture('/solana.png');
 
   // Normalization logic: catches the moment flipping stops to prevent 'backward snapping'

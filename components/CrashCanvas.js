@@ -217,8 +217,8 @@ export default function CrashCanvas({ multiplier, status, targetStartTime }) {
         if (rocketImg.current && rocketImg.current.complete) {
           ctx.save();
           ctx.translate(endX, endY);
-          // 🚀 Tweak: Points Up-Right correctly (Rotated 60deg clockwise from original -72deg)
-          ctx.rotate(-Math.PI / 15); 
+          // 🚀 Tweak: Points more towards the right (+30deg from previous)
+          ctx.rotate(Math.PI / 10); 
           ctx.drawImage(rocketImg.current, -25, -25, 50, 50);
           ctx.restore();
         } else {

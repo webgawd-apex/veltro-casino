@@ -50,7 +50,7 @@ export default function Header() {
       <header className="glass border-b border-white/5 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
         <div className="flex items-center gap-2 md:gap-3 lg:w-1/3">
           <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-500/20">
-            <img src="/logo.png" alt="HateCasino Logo" className="w-full h-full object-cover" />
+            <img src="/logo.png" alt="VeltroCasino Logo" className="w-full h-full object-cover" />
           </div>
           <span className="text-xl md:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 tracking-tighter uppercase italic">
           VELTRO<span className="text-purple-500">CASINO</span>

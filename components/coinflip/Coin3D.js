@@ -57,8 +57,8 @@ export default function Coin3D({ selectedSide = 'HEADS', isFlipping = false, res
           style={{ transform: 'translateZ(5px)', backfaceVisibility: 'hidden' }}
         >
           <img 
-            src="/hate-casino-nobg.png" 
-            alt="HateCasino Logo" 
+            src="/veltro-casino-nobg.png" 
+            alt="VeltroCasino Logo" 
             className="w-3/4 h-3/4 object-contain opacity-80" 
           />
         </div>
