@@ -11,7 +11,13 @@ import { socket } from "../../lib/socket";
 import confetti from "canvas-confetti";
 
 export default function CoinflipPage() {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
+  const getApiBase = () => {
+    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+    if (process.env.NEXT_PUBLIC_API_BASE_URL) return process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") return "http://localhost:10000";
+    return "https://hate-casino.onrender.com";
+  };
+  const apiBase = getApiBase();
   const [history, setHistory] = useState([]);
   const [players, setPlayers] = useState([]);
   

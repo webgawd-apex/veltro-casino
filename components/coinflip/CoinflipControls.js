@@ -8,7 +8,13 @@ import PlayerList from '../PlayerList';
 const HOUSE_WALLET = new PublicKey(process.env.HOUSE_WALLET_ADDRESS || "DUmdbgs6y1j8ST7C3CFRN4dNEjeNmiPeo922MWoqtaWi");
 
 export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger, isFlipping, gameState, onBetAgain, players = [] }) {
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
+  const getApiBase = () => {
+    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+    if (process.env.NEXT_PUBLIC_API_BASE_URL) return process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (typeof window !== "undefined" && window.location.hostname === "localhost") return "http://localhost:10000";
+    return "https://hate-casino.onrender.com";
+  };
+  const apiBase = getApiBase();
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const [amount, setAmount] = useState("0.1");
