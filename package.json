@@ -2,6 +2,7 @@
   "name": "hate-casino",
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@9.15.9",
   "private": true,
   "scripts": {
     "dev": "node server.js",

@@ -19,7 +19,7 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
 const port = process.env.PORT || 10000; // Updated default port to 10000
 
-const HOUSE_WALLET = process.env.HOUSE_WALLET_ADDRESS || "69XAKu2Z3RgiYARvsTHX8R4iobJYgQBkA9NuA2gGYoZ4";
+const HOUSE_WALLET = process.env.HOUSE_WALLET_ADDRESS || "DUmdbgs6y1j8ST7C3CFRN4dNEjeNmiPeo922MWoqtaWi";
 const solConnection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://api.devnet.solana.com", "confirmed");
 
 // Initialize Next.js

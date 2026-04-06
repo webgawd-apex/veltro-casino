@@ -5,7 +5,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { socket } from "../lib/socket.js";
 
-const HOUSE_WALLET = new PublicKey(process.env.HOUSE_WALLET_ADDRESS || "69XAKu2Z3RgiYARvsTHX8R4iobJYgQBkA9NuA2gGYoZ4");
+const HOUSE_WALLET = new PublicKey(process.env.HOUSE_WALLET_ADDRESS || "DUmdbgs6y1j8ST7C3CFRN4dNEjeNmiPeo922MWoqtaWi");
 
 export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
   const { connection } = useConnection();
