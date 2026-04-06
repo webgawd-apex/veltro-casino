@@ -24,7 +24,7 @@ export default function RootLayout({ children }) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="flex flex-col bg-zinc-950 text-white">
+      <body className="flex flex-col bg-zinc-950 text-white overflow-x-hidden">
         <WalletContextProvider>
           {children}
         </WalletContextProvider>
