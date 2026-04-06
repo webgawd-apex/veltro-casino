@@ -80,10 +80,10 @@ export default function CoinflipPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen overflow-y-auto bg-zinc-950 text-zinc-100 selection:bg-purple-500/30">
+    <div className="flex flex-col bg-zinc-950 text-zinc-100 selection:bg-purple-500/30">
       <Header />
       
-      <main className="flex-1 flex flex-col lg:flex-row relative bg-[#050912]">
+      <main className="flex-1 flex flex-col lg:flex-row relative bg-[#050912] min-h-screen">
         <div className="flex-1 flex flex-col justify-center items-center relative z-0 min-w-0 order-1 p-4 lg:p-8">
           {/* Constrained Blue Rain for loss state */}
           {gameState === 'RESULT' && winStatus === 'loss' && <CoinflipRain />}
