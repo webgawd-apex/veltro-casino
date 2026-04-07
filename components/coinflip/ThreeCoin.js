@@ -50,19 +50,21 @@ function CoinMesh({ selectedSide, isFlipping, result }) {
     }
   });
 
-  const goldColor = "#926c15"; // Rich Metallic Gold
+  const goldColor = "#926c15"; // Specific Gold Shade
   
   return (
     <group ref={meshRef}>
       {/* 
-         1. THE COIN BODY (Metallic Gold) 
+         1. THE COIN BODY (Solid Gold Shade) 
       */}
       <mesh castShadow receiveShadow>
         <cylinderGeometry args={[1, 1, 0.1, 32]} />
         <meshStandardMaterial 
           color={goldColor} 
-          metalness={1.0} 
-          roughness={0.2} 
+          metalness={0} 
+          roughness={0.5} 
+          emissive={goldColor}
+          emissiveIntensity={0.1}
         />
       </mesh>
 
