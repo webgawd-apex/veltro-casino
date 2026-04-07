@@ -89,7 +89,9 @@ export default function Header() {
           </div>
           
           <div className="relative">
-            <WalletMultiButton className="wallet-adapter-button-custom" />
+            <WalletMultiButton className="wallet-adapter-button-custom">
+              {publicKey ? undefined : "Connect"}
+            </WalletMultiButton>
           </div>
         </div>
       </header>
