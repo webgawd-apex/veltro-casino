@@ -50,7 +50,7 @@ function CoinMesh({ selectedSide, isFlipping, result }) {
     }
   });
 
-  const goldColor = "#D4AF37"; // Metallic Gold
+  const goldColor = "#926c15"; // Rich Metallic Gold
   
   return (
     <group ref={meshRef}>
