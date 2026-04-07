@@ -50,19 +50,19 @@ function CoinMesh({ selectedSide, isFlipping, result }) {
     }
   });
 
-  const goldColor = "#D4AF37"; // Metallic Gold
+  const goldColor = "#FFD700"; // Bullion Gold
   
   return (
     <group ref={meshRef}>
       {/* 
-         1. THE COIN BODY (Metallic Gold) 
+         1. THE COIN BODY (Bullion Gold) 
       */}
       <mesh castShadow receiveShadow>
         <cylinderGeometry args={[1, 1, 0.1, 32]} />
         <meshStandardMaterial 
           color={goldColor} 
           metalness={1.0} 
-          roughness={0.2} 
+          roughness={0.1} 
         />
       </mesh>
 
@@ -97,7 +97,7 @@ function CoinMesh({ selectedSide, isFlipping, result }) {
 
 export default function ThreeCoin({ selectedSide = 'HEADS', isFlipping = false, result = null }) {
   return (
-    <div className="w-[750px] h-[300px] relative pointer-events-none mx-auto scale-90 md:scale-100 overflow-hidden">
+    <div className="w-full max-w-[450px] aspect-square relative pointer-events-none mx-auto scale-90 md:scale-100 overflow-hidden">
       {/* Subtle Background Glow */}
       <div className="absolute inset-0 bg-radial-gradient from-zinc-500/5 to-transparent blur-3xl opacity-30" />
       
@@ -106,8 +106,8 @@ export default function ThreeCoin({ selectedSide = 'HEADS', isFlipping = false, 
         camera={{ position: [0, 0, 4], fov: 40 }}
         gl={{ antialias: true, preserveDrawingBuffer: true }}
       >
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[5, 5, 5]} intensity={0.8} castShadow />
+        <ambientLight intensity={1.2} />
+        <directionalLight position={[5, 10, 5]} intensity={1.5} castShadow />
         
         <Float speed={2.0} rotationIntensity={0.5} floatIntensity={0.5}>
             <CoinMesh 
