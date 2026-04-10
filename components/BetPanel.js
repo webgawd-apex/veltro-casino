@@ -11,7 +11,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const [amount, setAmount] = useState("0.1");
-  const [autoCashout, setAutoCashout] = useState("2.00");
+  const [autoCashout, setAutoCashout] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [balance, setBalance] = useState(0);
 
@@ -68,8 +68,11 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
       const parsedAmount = parseFloat(amount);
       if (isNaN(parsedAmount) || parsedAmount <= 0) throw new Error("Invalid bet amount");
 
-      const parsedCashout = parseFloat(autoCashout);
-      if (isNaN(parsedCashout) || parsedCashout <= 1.0) throw new Error("Invalid auto cashout limit");
+      let parsedCashout = undefined;
+      if (autoCashout !== "") {
+        parsedCashout = parseFloat(autoCashout);
+        if (isNaN(parsedCashout) || parsedCashout <= 1.0) throw new Error("Invalid auto cashout limit");
+      }
 
       const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
 
@@ -90,7 +93,6 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
       const signature = await sendTransaction(transaction, connection);
       console.log(`Transaction submitted! Signature: ${signature}`);
       
-      // Send the signature to our game engine to verify and log the bet!
       socket.emit("placeBet", {
         signature,
         publicKey: publicKey.toBase58(),
@@ -153,11 +155,13 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
             onChange={(e) => setAutoCashout(e.target.value)}
             disabled={isLoading}
             className="w-full h-16 bg-white/5 border border-white/10 p-5 rounded-2xl text-2xl font-black text-white font-mono transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 group-hover:border-white/20 disabled:opacity-50" 
+            placeholder="Manual"
           />
           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
             <span className="text-sm font-bold text-zinc-400 font-mono">X</span>
           </div>
         </div>
+        <p className="text-[10px] text-zinc-600 uppercase tracking-widest text-center mt-2">Leave blank for manual cashout only</p>
       </div>
       
       {isActivelyPlaying && status === 'RUNNING' ? (

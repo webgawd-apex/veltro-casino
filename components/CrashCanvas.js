@@ -12,7 +12,7 @@ export default function CrashCanvas({ multiplier, status, targetStartTime }) {
   const crashPoint = useRef({ x: 0, y: 0 });
   const [crashProgress, setCrashProgress] = useState(0);
   const animationFrameId = useRef(null);
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(20);
 
   const isCrashed = status === 'CRASHED';
   const isBetting = status === 'BETTING';
@@ -57,7 +57,7 @@ export default function CrashCanvas({ multiplier, status, targetStartTime }) {
     let intervalId;
     if (isBetting && targetStartTime) {
       intervalId = setInterval(() => {
-        const remaining = Math.min(30, Math.max(0, Math.round((targetStartTime - Date.now()) / 1000)));
+        const remaining = Math.min(20, Math.max(0, Math.round((targetStartTime - Date.now()) / 1000)));
         setCountdown(remaining);
       }, 100);
     }
