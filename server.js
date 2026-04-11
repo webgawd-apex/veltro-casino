@@ -100,6 +100,14 @@ app.prepare().then(() => {
   console.log("> Ready: All ES modules loaded and game engines started.");
 
   io.on("connection", (socket) => {
+    // 🚀 IMMEDIATE STATE SYNC: Fixes the 'long loading' bug
+    if (stateStore) {
+      socket.emit("gameUpdate", stateStore.getState());
+    }
+    if (playersStore) {
+      socket.emit("playersUpdate", playersStore.getPlayers());
+    }
+
     socket.on("placeBet", async (data) => {
       if (!playersStore || !stateStore) return;
       const currentState = stateStore.getState();
