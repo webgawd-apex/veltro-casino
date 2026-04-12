@@ -47,7 +47,7 @@ export default function Header() {
 
   return (
     <div className="sticky top-0 z-50 flex flex-col w-full shadow-2xl">
-      <header className="glass border-b border-white/5 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
+      <header className="glass border-b border-white/5 px-4 md:px-6 py-3 md:py-4 flex items-center justify-between relative z-20">
         <div className="flex items-center gap-2 md:gap-3 lg:w-1/3">
           <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-500/20">
             <img src="/logo.png" alt="VeltroCasino Logo" className="w-full h-full object-cover" />
@@ -97,7 +97,7 @@ export default function Header() {
       </header>
 
       {/* Mobile Navigation */}
-      <nav className="md:hidden flex px-4 py-2 bg-black/60 backdrop-blur-md border-b border-white/5 shadow-inner gap-2">
+      <nav className="md:hidden flex px-4 py-2 bg-black/60 backdrop-blur-md border-b border-white/5 shadow-inner gap-2 relative z-10">
         <Link 
           href="/crash" 
           className={`flex-1 py-3 text-center text-xs tracking-widest uppercase font-black transition-all duration-300 rounded-xl border ${
