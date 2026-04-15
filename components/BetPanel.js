@@ -178,9 +178,9 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
           id="bet-button" 
           onClick={handlePlaceBet}
           disabled={isLoading || status !== 'BETTING' || isActivelyPlaying}
-          className="group mt-auto w-full h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:opacity-75 disabled:pointer-events-none"
+          className={`group mt-auto w-full h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:pointer-events-none ${isActivelyPlaying ? 'grayscale opacity-75 cursor-default' : 'disabled:opacity-75'}`}
         >
-          {isLoading ? "WAITING FOR WALLET..." : status !== 'BETTING' ? "WAIT FOR NEXT ROUND" : "PLACE BET"}
+          {isLoading ? "WAITING FOR WALLET..." : isActivelyPlaying ? "BET PLACED" : status !== 'BETTING' ? "WAIT FOR NEXT ROUND" : "PLACE BET"}
           {!isLoading && status === 'BETTING' && (
             <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
