@@ -109,7 +109,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
   };
 
   return (
-    <div className="w-full lg:w-96 flex flex-col gap-8 p-8 glass border-r border-white/5 shadow-2xl">
+    <div className="w-full lg:w-96 flex flex-col gap-4 lg:gap-8 p-4 lg:p-8 glass border-r border-white/5 shadow-2xl">
       <div className="space-y-6">
         <div className="md:hidden flex justify-between items-center px-4 py-3 bg-black/40 border border-white/5 rounded-2xl shadow-inner">
           <span className="text-[10px] font-black uppercase text-zinc-500 tracking-[0.2em]">Wallet Balance</span>
@@ -127,7 +127,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLoading}
-            className="w-full h-16 bg-white/5 border border-white/10 p-5 rounded-2xl text-2xl font-black text-white font-mono transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/50 group-hover:border-white/20 disabled:opacity-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+            className="w-full h-11 lg:h-16 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-base lg:text-2xl font-black text-white font-mono transition-all focus:outline-none focus:ring-2 focus:ring-purple-500/50 group-hover:border-white/20 disabled:opacity-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
           />
           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
             <span className="text-sm font-bold text-zinc-400">SOL</span>
@@ -135,10 +135,10 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
         </div>
         
         <div className="grid grid-cols-4 gap-2">
-          <button disabled={isLoading} onClick={() => setAmountValue(Math.max(0.01, parseFloat(amount)/2))} className="h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">1/2</button>
-          <button disabled={isLoading} onClick={() => setAmountValue(parseFloat(amount)*2)} className="h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">2x</button>
-          <button disabled={isLoading} onClick={() => setAmountValue(100)} className="h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">MAX</button>
-          <button disabled={isLoading} onClick={() => setAmountValue(0.01)} className="h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">MIN</button>
+          <button disabled={isLoading} onClick={() => setAmountValue(Math.max(0.01, parseFloat(amount)/2))} className="h-8 lg:h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">1/2</button>
+          <button disabled={isLoading} onClick={() => setAmountValue(parseFloat(amount)*2)} className="h-8 lg:h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">2x</button>
+          <button disabled={isLoading} onClick={() => setAmountValue(100)} className="h-8 lg:h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">MAX</button>
+          <button disabled={isLoading} onClick={() => setAmountValue(0.01)} className="h-8 lg:h-10 text-xs font-black bg-white/5 hover:bg-white/10 text-zinc-200 border border-white/5 rounded-xl transition-all active:scale-95 uppercase tracking-tighter disabled:opacity-50">MIN</button>
         </div>
       </div>
       
@@ -154,7 +154,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
             value={autoCashout}
             onChange={(e) => setAutoCashout(e.target.value)}
             disabled={isLoading}
-            className="w-full h-16 bg-white/5 border border-white/10 p-5 rounded-2xl text-2xl font-black text-white font-mono transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 group-hover:border-white/20 disabled:opacity-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+            className="w-full h-11 lg:h-16 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl text-base lg:text-2xl font-black text-white font-mono transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/50 group-hover:border-white/20 disabled:opacity-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
             placeholder="0.00"
           />
           <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full border border-white/10">
@@ -169,7 +169,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
           id="cashout-button" 
           onClick={handleCashOut}
           disabled={isLoading}
-          className="group mt-auto w-full h-20 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3"
+          className="group mt-auto w-full h-14 lg:h-20 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-base lg:text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3"
         >
           {`CASH OUT ${(activeUserBet.amount * multiplier).toFixed(2)} SOL`}
         </button>
@@ -178,7 +178,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
           id="bet-button" 
           onClick={handlePlaceBet}
           disabled={isLoading || status !== 'BETTING' || isActivelyPlaying}
-          className={`group mt-auto w-full h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:pointer-events-none ${isActivelyPlaying ? 'grayscale opacity-75 cursor-default' : 'disabled:opacity-75'}`}
+          className={`group mt-auto w-full h-14 lg:h-20 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-base lg:text-xl tracking-[0.1em] rounded-2xl transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:pointer-events-none ${isActivelyPlaying ? 'grayscale opacity-75 cursor-default' : 'disabled:opacity-75'}`}
         >
           {isLoading ? "WAITING FOR WALLET..." : isActivelyPlaying ? "BET PLACED" : status !== 'BETTING' ? "WAIT FOR NEXT ROUND" : "PLACE BET"}
           {!isLoading && status === 'BETTING' && (

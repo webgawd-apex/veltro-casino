@@ -62,10 +62,10 @@ export default function Home() {
       <Header />
 
       <main className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden relative">
-        {/* Graph Area */}
-        <div className="flex-1 min-w-0 flex flex-col order-1 lg:order-2">
+        {/* Graph Area - sticky on mobile so canvas stays visible while panel scrolls */}
+        <div className="flex-1 min-w-0 flex flex-col order-1 lg:order-2 sticky top-0 z-10 lg:static lg:z-auto bg-zinc-950">
           <HistoryBar history={gameState.history} />
-          <div className="flex-1 p-2 lg:p-4 h-[500px] lg:h-full lg:min-h-0">
+          <div className="flex-1 p-2 lg:p-4 h-[240px] sm:h-[280px] lg:h-full lg:min-h-0">
              <CrashCanvas 
                 multiplier={gameState.multiplier} 
                 status={gameState.status} 
