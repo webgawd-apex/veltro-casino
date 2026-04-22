@@ -21,7 +21,7 @@ const hostname = "localhost";
 const port = process.env.PORT || 10000;
 
 const HOUSE_WALLET = process.env.HOUSE_WALLET_ADDRESS || "DUmdbgs6y1j8ST7C3CFRN4dNEjeNmiPeo922MWoqtaWi";
-const solConnection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://solana-mainnet.core.chainstack.com/50d9fbef13c14089c59929338f006803", "confirmed");
+const solConnection = new Connection(process.env.RPC_URL || "https://solana-mainnet.core.chainstack.com/50d9fbef13c14089c59929338f006803", "confirmed");
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -140,61 +140,77 @@ app.prepare().then(() => {
       socket.emit("depositPending", { message: "Verifying on-chain..." });
 
       try {
-        let confirmed = false;
-        let txError = false;
-
-        // Poll signature status — much faster than getParsedTransaction
-        // 30 retries × 1.5s = 45 second window (enough for devnet + mainnet)
+        let confirmedData = null;
+        
+        // 1. Wait for confirmation
         for (let i = 0; i < 30; i++) {
-          try {
-            const statusRes = await solConnection.getSignatureStatus(signature, {
-              searchTransactionHistory: true
-            });
-            const status = statusRes?.value;
-
-            if (status?.err) {
-              txError = true;
-              break;
-            }
-
-            if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
-              confirmed = true;
-              break;
-            }
-          } catch (pollErr) {
-            // Transient RPC error — keep polling
-            console.warn(`[DEPOSIT] Poll attempt ${i + 1} failed:`, pollErr.message);
+          const statusRes = await solConnection.getSignatureStatus(signature, { searchTransactionHistory: true });
+          const status = statusRes?.value;
+          if (status?.err) throw new Error("Transaction failed on-chain.");
+          if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
+            confirmedData = status;
+            break;
           }
           await new Promise(r => setTimeout(r, 1500));
         }
 
-        if (txError) {
-          socket.emit("depositError", {
-            message: "Transaction was rejected by the network. Your wallet has NOT been debited."
-          });
-          return;
+        if (!confirmedData) {
+          return socket.emit("depositError", { message: "Verification timeout. If debited, contact support with your signature." });
         }
 
-        if (!confirmed) {
-          // Transaction submitted but not confirmed in time — log signature for manual recovery
-          console.error(`[DEPOSIT UNCONFIRMED] wallet=${wallet.slice(0, 6)} sig=${signature} amount=${amount}`);
-          socket.emit("depositError", {
-            message: `Verification timeout. If your wallet was debited, contact support with your signature: ${signature.slice(0, 24)}...`
-          });
-          return;
+        // 2. Fetch full transaction to verify details (Sender, Receiver, Amount)
+        // This is the DEEP VERIFICATION layer
+        const tx = await solConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
+        if (!tx) {
+          return socket.emit("depositError", { message: "Failed to fetch transaction details. Please try again." });
         }
 
-        // ✅ Confirmed — credit casino balance
-        const account = accountsModule.creditBalance(wallet, amount);
-        accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: amount, amount });
+        // Find the transfer instruction
+        const innerInstructions = tx.meta?.innerInstructions || [];
+        const instructions = tx.transaction.message.instructions;
+        
+        let solTransferred = 0;
+        let foundRecipient = false;
+        let isCorrectSender = false;
+
+        // Check for direct transfers or inner transfers (if using some advanced wallets)
+        const allIx = [...instructions];
+        
+        // Simple verification: Check balance changes (most robust method)
+        const postIndex = tx.transaction.message.accountKeys.findIndex(k => k.pubkey.toBase58() === HOUSE_WALLET);
+        if (postIndex !== -1) {
+          const preBalance = tx.meta.preBalances[postIndex];
+          const postBalance = tx.meta.postBalances[postIndex];
+          solTransferred = (postBalance - preBalance) / 1e9;
+          foundRecipient = true;
+        }
+
+        // Verify sender
+        const senderIndex = tx.transaction.message.accountKeys.findIndex(k => k.signer === true);
+        if (senderIndex !== -1) {
+          const senderPubkey = tx.transaction.message.accountKeys[senderIndex].pubkey.toBase58();
+          if (senderPubkey === wallet) isCorrectSender = true;
+        }
+
+        if (!foundRecipient || solTransferred < amount - 0.001) {
+          console.warn(`[DEPOSIT FAILED] Deep verification mismatch. Sent: ${solTransferred}, Expected: ${amount}, Recipient: ${foundRecipient}`);
+          return socket.emit("depositError", { message: "Verification failed: Recipient or Amount mismatch." });
+        }
+
+        if (!isCorrectSender) {
+          return socket.emit("depositError", { message: "Verification failed: Sender mismatch." });
+        }
+
+        // ✅ All checks passed — credit casino balance
+        const account = accountsModule.creditBalance(wallet, solTransferred, signature);
+        accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
         socket.emit("accountUpdate", account);
-        socket.emit("depositSuccess", { amount });
-        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} deposited ${amount} SOL. New balance: ${account.balance}`);
+        socket.emit("depositSuccess", { amount: solTransferred });
+        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL. balance: ${account.balance}`);
+        
       } catch (err) {
         console.error("[DEPOSIT ERROR]", err);
-        socket.emit("depositError", {
-          message: "Deposit verification encountered an error. If your wallet was debited, please contact support."
-        });
+        socket.emit("depositError", { message: err.message || "Deposit verification error." });
       }
     });
 
