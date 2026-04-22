@@ -157,7 +157,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
         </div>
       </div>
 
-      <div className="space-y-4 lg:space-y-6 pt-4 border-t border-white/5">
+      <div className="space-y-4 lg:space-y-6 pt-4 border-t border-white/5">-
         <label className="text-xs font-black uppercase text-zinc-500 tracking-[0.2em] flex items-center gap-2">
           <div className="w-1 h-3 bg-indigo-500 rounded-full" />
           Auto Cashout

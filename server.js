@@ -63,8 +63,8 @@ app.prepare().then(() => {
             // Debit before flip
             accountsModule.debitBalance(wallet, amount);
 
-            // Rig result (house edge)
-            let result = Math.random() < 0.97 ? (choice === 'HEADS' ? 'TAILS' : 'HEADS') : choice;
+            // Fair Coinflip: 45% win chance for player (55% house edge)
+            let result = Math.random() < 0.45 ? choice : (choice === 'HEADS' ? 'TAILS' : 'HEADS');
             
             let status = 'busted';
             let profit = 0;
