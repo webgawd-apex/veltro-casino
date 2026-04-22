@@ -135,25 +135,66 @@ app.prepare().then(() => {
     // Deposit: verify on-chain tx then credit casino balance
     socket.on("deposit", async ({ wallet, signature, amount }) => {
       if (!wallet || !signature || !amount) return;
+
+      // Tell the UI we're verifying so it can show a loading state
+      socket.emit("depositPending", { message: "Verifying on-chain..." });
+
       try {
-        let tx = null;
-        for (let i = 0; i < 5; i++) {
-          tx = await solConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-          if (tx) break;
+        let confirmed = false;
+        let txError = false;
+
+        // Poll signature status — much faster than getParsedTransaction
+        // 30 retries × 1.5s = 45 second window (enough for devnet + mainnet)
+        for (let i = 0; i < 30; i++) {
+          try {
+            const statusRes = await solConnection.getSignatureStatus(signature, {
+              searchTransactionHistory: true
+            });
+            const status = statusRes?.value;
+
+            if (status?.err) {
+              txError = true;
+              break;
+            }
+
+            if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
+              confirmed = true;
+              break;
+            }
+          } catch (pollErr) {
+            // Transient RPC error — keep polling
+            console.warn(`[DEPOSIT] Poll attempt ${i + 1} failed:`, pollErr.message);
+          }
           await new Promise(r => setTimeout(r, 1500));
         }
-        if (!tx) {
-          socket.emit("depositError", { message: "Transaction not found on-chain. Try again." });
+
+        if (txError) {
+          socket.emit("depositError", {
+            message: "Transaction was rejected by the network. Your wallet has NOT been debited."
+          });
           return;
         }
+
+        if (!confirmed) {
+          // Transaction submitted but not confirmed in time — log signature for manual recovery
+          console.error(`[DEPOSIT UNCONFIRMED] wallet=${wallet.slice(0, 6)} sig=${signature} amount=${amount}`);
+          socket.emit("depositError", {
+            message: `Verification timeout. If your wallet was debited, contact support with your signature: ${signature.slice(0, 24)}...`
+          });
+          return;
+        }
+
+        // ✅ Confirmed — credit casino balance
         const account = accountsModule.creditBalance(wallet, amount);
         accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: amount, amount });
         socket.emit("accountUpdate", account);
         socket.emit("depositSuccess", { amount });
-        console.log(`[DEPOSIT] ${wallet.slice(0, 6)} deposited ${amount} SOL. New balance: ${account.balance}`);
+        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} deposited ${amount} SOL. New balance: ${account.balance}`);
       } catch (err) {
         console.error("[DEPOSIT ERROR]", err);
-        socket.emit("depositError", { message: "Deposit verification failed." });
+        socket.emit("depositError", {
+          message: "Deposit verification encountered an error. If your wallet was debited, please contact support."
+        });
       }
     });
 

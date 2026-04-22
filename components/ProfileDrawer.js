@@ -23,6 +23,7 @@ export default function ProfileDrawer({ open, onClose }) {
   const [activeTab, setActiveTab] = useState('deposit');
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [depositStep, setDepositStep] = useState('idle'); // 'idle' | 'signing' | 'verifying'
   const [account, setAccount] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null); // { type: 'success'|'error', text }
 
@@ -43,13 +44,20 @@ export default function ProfileDrawer({ open, onClose }) {
     const handleAccountUpdate = (data) => {
       if (data?.wallet === walletStr) setAccount(data);
     };
+    const handleDepositPending = () => {
+      setDepositStep('verifying');
+    };
     const handleDepositSuccess = ({ amount }) => {
-      setStatusMsg({ type: 'success', text: `Deposited ${amount} SOL successfully!` });
-      setTimeout(() => setStatusMsg(null), 4000);
+      setDepositStep('idle');
+      setIsProcessing(false);
+      setStatusMsg({ type: 'success', text: `✅ ${amount} SOL deposited successfully!` });
+      setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
+      setDepositStep('idle');
+      setIsProcessing(false);
       setStatusMsg({ type: 'error', text: message });
-      setTimeout(() => setStatusMsg(null), 4000);
+      setTimeout(() => setStatusMsg(null), 10000);
     };
     const handleWithdrawSuccess = ({ amount }) => {
       setStatusMsg({ type: 'success', text: `Withdrew ${amount} SOL to your wallet!` });
@@ -61,6 +69,7 @@ export default function ProfileDrawer({ open, onClose }) {
     };
 
     socket.on('accountUpdate', handleAccountUpdate);
+    socket.on('depositPending', handleDepositPending);
     socket.on('depositSuccess', handleDepositSuccess);
     socket.on('depositError', handleDepositError);
     socket.on('withdrawSuccess', handleWithdrawSuccess);
@@ -68,6 +77,7 @@ export default function ProfileDrawer({ open, onClose }) {
 
     return () => {
       socket.off('accountUpdate', handleAccountUpdate);
+      socket.off('depositPending', handleDepositPending);
       socket.off('depositSuccess', handleDepositSuccess);
       socket.off('depositError', handleDepositError);
       socket.off('withdrawSuccess', handleWithdrawSuccess);
@@ -78,6 +88,7 @@ export default function ProfileDrawer({ open, onClose }) {
   const handleDeposit = async () => {
     if (!publicKey || !amount || parseFloat(amount) <= 0) return;
     setIsProcessing(true);
+    setDepositStep('signing');
     try {
       const parsedAmount = parseFloat(amount);
       const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
@@ -94,13 +105,15 @@ export default function ProfileDrawer({ open, onClose }) {
       transaction.feePayer = publicKey;
 
       const signature = await sendTransaction(transaction, connection);
+      // Server will emit depositPending → depositSuccess/depositError
       socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
       setAmount('');
+      // NOTE: isProcessing stays true until depositSuccess/depositError arrives
     } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message || 'Deposit failed or was rejected.' });
-      setTimeout(() => setStatusMsg(null), 4000);
-    } finally {
+      setDepositStep('idle');
       setIsProcessing(false);
+      setStatusMsg({ type: 'error', text: err.message || 'Deposit failed or was rejected.' });
+      setTimeout(() => setStatusMsg(null), 6000);
     }
   };
 
@@ -244,10 +257,15 @@ export default function ProfileDrawer({ open, onClose }) {
               disabled={isProcessing || !amount || parseFloat(amount) <= 0}
               className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20"
             >
-              {isProcessing ? (
+              {depositStep === 'signing' ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  Verifying...
+                  Waiting for signature...
+                </span>
+              ) : depositStep === 'verifying' ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  Verifying on-chain...
                 </span>
               ) : 'Deposit to Casino'}
             </button>
