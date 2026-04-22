@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useWallet } from "@solana/wallet-adapter-react";
-import { socket } from '../lib/socket';
+import { socket } from '../../lib/socket';
 
 export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger, isFlipping, gameState, onBetAgain }) {
   const getApiBase = () => {
@@ -18,8 +18,8 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
   const [isLoading, setIsLoading] = useState(false);
   const [casinoBalance, setCasinoBalance] = useState(0);
 
-  const [showInsufficientLabel, setShowInsufficientLabel] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [btnError, setBtnError] = useState(null);
 
   const walletStr = publicKey?.toBase58() ?? '';
   const parsedAmount = parseFloat(amount) || 0;
@@ -47,9 +47,9 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
       return;
     }
     if (isInsufficient) {
-      setShowInsufficientLabel(true);
+      setBtnError("INSUFFICIENT BALANCE");
       setShowModal(true);
-      setTimeout(() => setShowInsufficientLabel(false), 3000);
+      setTimeout(() => setBtnError(null), 2500);
       return;
     }
 
@@ -70,9 +70,9 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
       const data = await res.json();
 
       if (res.status === 402) {
-        setShowInsufficientLabel(true);
+        setBtnError("INSUFFICIENT BALANCE");
         setShowModal(true);
-        setTimeout(() => setShowInsufficientLabel(false), 3000);
+        setTimeout(() => setBtnError(null), 2500);
         return;
       }
       if (!data.success) throw new Error(data.error || "Flip failed");
@@ -122,6 +122,13 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
         </button>
       ) : (
         <>
+          {/* Mobile Balance */}
+          <div className="md:hidden flex justify-between items-center w-full px-4 py-3 mb-2 bg-[#0A111C] border border-white/5 rounded-xl shadow-inner">
+            <span className="text-[10px] font-black uppercase text-zinc-500 tracking-[0.2em]">Casino Balance</span>
+            <span className={`text-sm font-black font-mono ${casinoBalance > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+              {publicKey ? casinoBalance.toFixed(4) : "0.0000"} SOL
+            </span>
+          </div>
 
           {/* HEADS / TAILS Segmented Control */}
           <div className={`flex bg-[#0A111C] p-[2px] rounded border border-white/5 w-48 shadow-lg transition-opacity duration-300 ${gameState === 'FLIPPING' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
@@ -178,7 +185,7 @@ export default function CoinflipControls({ choice, onChoiceChange, onFlipTrigger
             disabled={isFlipping || isLoading || isInvalid}
             className={`w-full h-12 mt-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs tracking-[0.2em] uppercase rounded shadow-lg transition-all active:scale-95 disabled:opacity-50 ${gameState === 'FLIPPING' ? 'scale-0 opacity-0' : 'scale-100 opacity-100'}`}
           >
-            {isLoading ? "Flipping..." : showInsufficientLabel ? "Insufficient Balance" : isFlipping ? "Flipping..." : "Flip Coin"}
+            {btnError ? btnError : isLoading ? "Flipping..." : isFlipping ? "Flipping..." : "Flip Coin"}
           </button>
         </>
       )}

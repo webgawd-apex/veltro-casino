@@ -11,8 +11,8 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
   const [isLoading, setIsLoading] = useState(false);
   const [casinoBalance, setCasinoBalance] = useState(0);
 
-  const [showInsufficientLabel, setShowInsufficientLabel] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [btnError, setBtnError] = useState(null);
 
   const walletStr = publicKey?.toBase58() ?? '';
 
@@ -55,9 +55,9 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
       return;
     }
     if (isInsufficient) {
-      setShowInsufficientLabel(true);
+      setBtnError("INSUFFICIENT BALANCE");
       setShowModal(true);
-      setTimeout(() => setShowInsufficientLabel(false), 3000);
+      setTimeout(() => setBtnError(null), 2500);
       return;
     }
 
@@ -86,12 +86,12 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
     ? 'grayscale opacity-75 cursor-default'
     : 'hover:from-purple-500 hover:to-indigo-500';
 
-  const betButtonLabel = isLoading
+  const betButtonLabel = btnError
+    ? btnError
+    : isLoading
     ? "PLACING BET..."
     : isActivelyPlaying
     ? "BET PLACED"
-    : showInsufficientLabel
-    ? "INSUFFICIENT BALANCE"
     : status !== 'BETTING'
     ? "WAIT FOR NEXT ROUND"
     : "PLACE BET";
@@ -123,6 +123,13 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
       )}
 
       <div className="space-y-4 lg:space-y-6">
+        {/* Mobile Casino Balance */}
+        <div className="md:hidden flex justify-between items-center px-4 py-3 bg-black/40 border border-white/5 rounded-2xl shadow-inner">
+          <span className="text-[10px] font-black uppercase text-zinc-500 tracking-[0.2em]">Casino Balance</span>
+          <span className={`text-sm font-black font-mono ${casinoBalance > 0 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+            {publicKey ? casinoBalance.toFixed(4) : "0.0000"} SOL
+          </span>
+        </div>
 
         <label className="text-xs font-black uppercase text-zinc-500 tracking-[0.2em] flex items-center gap-2">
           <div className="w-1 h-3 bg-purple-500 rounded-full" />
