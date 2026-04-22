@@ -11,6 +11,8 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
   const [isLoading, setIsLoading] = useState(false);
   const [casinoBalance, setCasinoBalance] = useState(0);
 
+  const [showModal, setShowModal] = useState(false);
+
   const walletStr = publicKey?.toBase58() ?? '';
 
   // Subscribe to casino account updates
@@ -52,7 +54,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
       return;
     }
     if (isInsufficient) {
-      alert("Insufficient casino balance. Please deposit via your profile.");
+      setShowModal(true);
       return;
     }
 
@@ -76,10 +78,8 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
   };
 
   // Determine bet button state
-  const betButtonDisabled = isLoading || status !== 'BETTING' || isActivelyPlaying || isInsufficient;
-  const betButtonClass = isInsufficient
-    ? 'from-rose-900 to-rose-800 opacity-80 cursor-not-allowed'
-    : isActivelyPlaying
+  const betButtonDisabled = isLoading || status !== 'BETTING' || isActivelyPlaying;
+  const betButtonClass = isActivelyPlaying
     ? 'grayscale opacity-75 cursor-default'
     : 'hover:from-purple-500 hover:to-indigo-500';
 
@@ -87,14 +87,36 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
     ? "PLACING BET..."
     : isActivelyPlaying
     ? "BET PLACED"
-    : isInsufficient
-    ? "INSUFFICIENT BALANCE"
     : status !== 'BETTING'
     ? "WAIT FOR NEXT ROUND"
     : "PLACE BET";
 
   return (
-    <div className="w-full lg:w-96 flex flex-col gap-4 lg:gap-8 p-4 lg:p-8 glass border-r border-white/5 shadow-2xl">
+    <div className="w-full lg:w-96 flex flex-col gap-4 lg:gap-8 p-4 lg:p-8 glass border-r border-white/5 shadow-2xl relative">
+      {/* Insufficient Balance Modal */}
+      {showModal && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-r-3xl" onClick={() => setShowModal(false)} />
+          <div className="relative bg-zinc-900 border border-white/10 p-6 rounded-2xl shadow-2xl w-full animate-in zoom-in duration-200">
+            <div className="w-12 h-12 bg-rose-500/20 rounded-xl flex items-center justify-center mb-4 mx-auto border border-rose-500/30">
+               <svg className="w-6 h-6 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+               </svg>
+            </div>
+            <h3 className="text-white font-black text-center text-lg uppercase tracking-widest mb-2">Insufficient Balance</h3>
+            <p className="text-zinc-400 text-xs text-center mb-6 leading-relaxed">
+              You don't have enough SOL in your in-game wallet. Deposit funds via your profile icon at the top right to continue.
+            </p>
+            <button
+              onClick={() => setShowModal(false)}
+              className="w-full py-3 bg-white/5 hover:bg-white/10 text-white font-black text-xs uppercase tracking-widest rounded-xl border border-white/10 transition-all"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4 lg:space-y-6">
         {/* Mobile Casino Balance */}
         <div className="md:hidden flex justify-between items-center px-4 py-3 bg-black/40 border border-white/5 rounded-2xl shadow-inner">
@@ -103,16 +125,6 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
             {publicKey ? casinoBalance.toFixed(4) : "0.0000"} SOL
           </span>
         </div>
-
-        {/* Insufficient balance warning */}
-        {isInsufficient && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-xl">
-            <span className="text-rose-400 text-xs">⚠</span>
-            <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">
-              Deposit via your profile to play
-            </span>
-          </div>
-        )}
 
         <label className="text-xs font-black uppercase text-zinc-500 tracking-[0.2em] flex items-center gap-2">
           <div className="w-1 h-3 bg-purple-500 rounded-full" />
@@ -178,7 +190,7 @@ export default function BetPanel({ status, multiplier = 1.0, players = [] }) {
           className={`group mt-auto w-full h-14 lg:h-20 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-base lg:text-xl tracking-[0.1em] rounded-2xl transition-all transform active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:pointer-events-none ${betButtonClass}`}
         >
           {betButtonLabel}
-          {!isLoading && !isActivelyPlaying && !isInsufficient && status === 'BETTING' && (
+          {!isLoading && !isActivelyPlaying && status === 'BETTING' && (
             <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
