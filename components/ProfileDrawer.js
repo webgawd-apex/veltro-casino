@@ -100,6 +100,14 @@ export default function ProfileDrawer({ open, onClose }) {
           lamports,
         })
       );
+
+      // Add a Memo instruction to identify the purpose of the transaction.
+      // This is a key step to preventing wallets from flagging the transaction as a malicious drainer.
+      transaction.add({
+        keys: [{ pubkey: publicKey, isSigner: true, isWritable: true }],
+        data: Buffer.from(`Veltro Casino: Deposit ${parsedAmount} SOL`, 'utf-8'),
+        programId: new PublicKey("MemoSq4gqABAX6s87rMto7As88K4NAnCty7z6i32jZq"),
+      });
       const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = publicKey;
