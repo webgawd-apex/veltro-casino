@@ -101,8 +101,7 @@ export default function ProfileDrawer({ open, onClose }) {
         })
       );
 
-      // Add a Memo instruction to identify the purpose of the transaction.
-      // This is a key step to preventing wallets from flagging the transaction as a malicious drainer.
+      // Add Memo instruction to identify the deposit
       transaction.add(
         new TransactionInstruction({
           keys: [],
@@ -111,7 +110,7 @@ export default function ProfileDrawer({ open, onClose }) {
         })
       );
 
-      // Removed manual blockhash/feePayer - sendTransaction handles this automatically
+      // We let sendTransaction handle the blockhash and fee payer automatically for maximum compatibility.
       const signature = await sendTransaction(transaction, connection);
       // Server will emit depositPending → depositSuccess/depositError
       socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
