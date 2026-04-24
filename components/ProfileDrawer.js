@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PublicKey, SystemProgram, Transaction, TransactionInstruction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { socket } from '../lib/socket';
 
 const HOUSE_WALLET = new PublicKey(process.env.NEXT_PUBLIC_HOUSE_WALLET_ADDRESS || "DUmdbgs6y1j8ST7C3CFRN4dNEjeNmiPeo922MWoqtaWi");
@@ -103,15 +103,15 @@ export default function ProfileDrawer({ open, onClose }) {
 
       // Add a Memo instruction to identify the purpose of the transaction.
       // This is a key step to preventing wallets from flagging the transaction as a malicious drainer.
-      transaction.add({
-        keys: [{ pubkey: publicKey, isSigner: true, isWritable: true }],
-        data: Buffer.from(`Veltro Casino: Deposit ${parsedAmount} SOL`, 'utf-8'),
-        programId: new PublicKey("MemoSq4gqABAX6s87rMto7As88K4NAnCty7z6i32jZq"),
-      });
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = publicKey;
+      transaction.add(
+        new TransactionInstruction({
+          keys: [],
+          programId: new PublicKey("MemoSq4gqABAX6s87rMto7As88K4NAnCty7z6i32jZq"),
+          data: new TextEncoder().encode(`Veltro Casino: Deposit ${parsedAmount} SOL`),
+        })
+      );
 
+      // Removed manual blockhash/feePayer - sendTransaction handles this automatically
       const signature = await sendTransaction(transaction, connection);
       // Server will emit depositPending → depositSuccess/depositError
       socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
