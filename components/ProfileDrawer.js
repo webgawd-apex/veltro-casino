@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, SystemProgram, Transaction, TransactionInstruction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PublicKey, SystemProgram, Transaction, TransactionInstruction, VersionedTransaction, TransactionMessage, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { socket } from '../lib/socket';
 
 const HOUSE_WALLET = new PublicKey(process.env.NEXT_PUBLIC_HOUSE_WALLET_ADDRESS || "DUmdbgs6y1j8ST7C3CFRN4dNEjeNmiPeo922MWoqtaWi");
+
 
 // Deterministic gradient per wallet
 const AVATAR_GRADIENTS = [
@@ -93,24 +94,31 @@ export default function ProfileDrawer({ open, onClose }) {
       const parsedAmount = parseFloat(amount);
       const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
 
-      const transaction = new Transaction().add(
+      // Explicitly fetch the latest blockhash
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+
+      // Build modern Versioned Transaction to prevent Phantom serialization errors
+      const instructions = [
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: HOUSE_WALLET,
           lamports,
-        })
-      );
-
-      // Add Memo instruction to identify the deposit
-      transaction.add(
+        }),
         new TransactionInstruction({
-          keys: [],
+          keys: [{ pubkey: publicKey, isSigner: true, isWritable: true }],
           programId: new PublicKey("MemoSq4gqABAX6s87rMto7As88K4NAnCty7z6i32jZq"),
           data: new TextEncoder().encode(`Veltro Casino: Deposit ${parsedAmount} SOL`),
         })
-      );
+      ];
 
-      // We let sendTransaction handle the blockhash and fee payer automatically for maximum compatibility.
+      const messageV0 = new TransactionMessage({
+        payerKey: publicKey,
+        recentBlockhash: blockhash,
+        instructions,
+      }).compileToV0Message();
+
+      const transaction = new VersionedTransaction(messageV0);
+
       const signature = await sendTransaction(transaction, connection);
       // Server will emit depositPending → depositSuccess/depositError
       socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
