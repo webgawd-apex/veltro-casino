@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { socket } from '../lib/socket';
@@ -33,8 +33,32 @@ export default function ProfileDrawer({ open, onClose }) {
   const colorIndex = walletStr ? walletStr.charCodeAt(0) % AVATAR_GRADIENTS.length : 0;
   const avatarGradient = AVATAR_GRADIENTS[colorIndex];
 
-  // USD estimate (rough)
-  const usdEst = account ? (account.balance * 140).toFixed(2) : '0.00';
+  const [solPrice, setSolPrice] = useState(140);
+  const priceInterval = useRef(null);
+
+  // USD estimate (Live)
+  const usdEst = account ? (account.balance * solPrice).toFixed(2) : '0.00';
+
+  // Fetch Live SOL Price from Jupiter
+  useEffect(() => {
+    const fetchPrice = async () => {
+      try {
+        const res = await fetch('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112');
+        const data = await res.json();
+        const price = data.data['So11111111111111111111111111111111111111112']?.price;
+        if (price) {
+          setSolPrice(parseFloat(price));
+          console.log(`[PRICE] Live SOL: $${parseFloat(price).toFixed(2)}`);
+        }
+      } catch (err) {
+        console.warn("[PRICE] Failed to fetch live price, using fallback.");
+      }
+    };
+
+    fetchPrice();
+    priceInterval.current = setInterval(fetchPrice, 60000); // Update every minute
+    return () => clearInterval(priceInterval.current);
+  }, []);
 
   // Fetch & subscribe to account updates
   useEffect(() => {
@@ -50,7 +74,7 @@ export default function ProfileDrawer({ open, onClose }) {
     const handleDepositSuccess = ({ amount }) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setStatusMsg({ type: 'success', text: `✅ ${amount} SOL deposited successfully!` });
+      setStatusMsg({ type: 'success', text: `${amount} SOL deposited successfully!` });
       setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
