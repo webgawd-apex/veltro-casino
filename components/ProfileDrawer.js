@@ -42,25 +42,15 @@ export default function ProfileDrawer({ open, onClose }) {
     socket.emit('getAccount', walletStr);
 
     const handleAccountUpdate = (data) => {
-      console.log("[DEBUG] accountUpdate received:", data);
-      if (data?.wallet?.trim() === walletStr?.trim()) {
-        console.log("[DEBUG] Matching wallet, updating state...");
-        setAccount(data);
-      } else {
-        console.warn("[DEBUG] Received accountUpdate for different wallet:", data?.wallet, "vs", walletStr);
-      }
+      if (data?.wallet === walletStr) setAccount(data);
     };
     const handleDepositPending = () => {
       setDepositStep('verifying');
     };
-    const handleDepositSuccess = (data) => {
+    const handleDepositSuccess = ({ amount }) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setStatusMsg({ type: 'success', text: `✅ ${data.amount} SOL deposited successfully!` });
-      if (data.account) {
-        console.log("[DEBUG] depositSuccess updated account:", data.account);
-        setAccount(data.account);
-      }
+      setStatusMsg({ type: 'success', text: `✅ ${amount} SOL deposited successfully!` });
       setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
@@ -69,12 +59,8 @@ export default function ProfileDrawer({ open, onClose }) {
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
-    const handleWithdrawSuccess = (data) => {
-      setStatusMsg({ type: 'success', text: `Withdrew ${data.amount} SOL to your wallet!` });
-      if (data.account) {
-        console.log("[DEBUG] withdrawSuccess updated account:", data.account);
-        setAccount(data.account);
-      }
+    const handleWithdrawSuccess = ({ amount }) => {
+      setStatusMsg({ type: 'success', text: `Withdrew ${amount} SOL to your wallet!` });
       setTimeout(() => setStatusMsg(null), 4000);
     };
     const handleWithdrawError = ({ message }) => {
@@ -103,49 +89,31 @@ export default function ProfileDrawer({ open, onClose }) {
     if (!publicKey || !amount || parseFloat(amount) <= 0) return;
     setIsProcessing(true);
     setDepositStep('signing');
-    setStatusMsg(null);
-
     try {
       const parsedAmount = parseFloat(amount);
       const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
 
-      // Fetch fresh blockhash with confirmed commitment
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-
-      const transaction = new Transaction({
-        feePayer: publicKey,
-        recentBlockhash: blockhash,
-      }).add(
+      const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: HOUSE_WALLET,
           lamports,
         })
       );
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = publicKey;
 
-      // Send via wallet adapter
-      const signature = await sendTransaction(transaction, connection, {
-        preflightCommitment: 'confirmed',
-        maxRetries: 3
-      });
-
-      console.log(`[DEPOSIT] Signature obtained: ${signature}`);
-      
+      const signature = await sendTransaction(transaction, connection);
       // Server will emit depositPending → depositSuccess/depositError
       socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
       setAmount('');
+      // NOTE: isProcessing stays true until depositSuccess/depositError arrives
     } catch (err) {
-      console.error("[DEPOSIT ERROR DETAIL]", err);
       setDepositStep('idle');
       setIsProcessing(false);
-      
-      let errorText = err.message || 'Deposit failed or was rejected.';
-      if (errorText.includes('Unexpected error')) {
-        errorText = "Wallet Error: Please ensure you have enough SOL for gas.";
-      }
-      
-      setStatusMsg({ type: 'error', text: errorText });
-      setTimeout(() => setStatusMsg(null), 8000);
+      setStatusMsg({ type: 'error', text: err.message || 'Deposit failed or was rejected.' });
+      setTimeout(() => setStatusMsg(null), 6000);
     }
   };
 
@@ -297,7 +265,7 @@ export default function ProfileDrawer({ open, onClose }) {
               ) : depositStep === 'verifying' ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  Verifying...
+                  Verifying on-chain...
                 </span>
               ) : 'Deposit to Casino'}
             </button>
