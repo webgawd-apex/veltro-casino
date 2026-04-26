@@ -89,31 +89,49 @@ export default function ProfileDrawer({ open, onClose }) {
     if (!publicKey || !amount || parseFloat(amount) <= 0) return;
     setIsProcessing(true);
     setDepositStep('signing');
+    setStatusMsg(null);
+
     try {
       const parsedAmount = parseFloat(amount);
       const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
 
-      const transaction = new Transaction().add(
+      // Fetch fresh blockhash with confirmed commitment
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+      const transaction = new Transaction({
+        feePayer: publicKey,
+        recentBlockhash: blockhash,
+      }).add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: HOUSE_WALLET,
           lamports,
         })
       );
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = publicKey;
 
-      const signature = await sendTransaction(transaction, connection);
+      // Send via wallet adapter
+      const signature = await sendTransaction(transaction, connection, {
+        preflightCommitment: 'confirmed',
+        maxRetries: 3
+      });
+
+      console.log(`[DEPOSIT] Signature obtained: ${signature}`);
+      
       // Server will emit depositPending → depositSuccess/depositError
       socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
       setAmount('');
-      // NOTE: isProcessing stays true until depositSuccess/depositError arrives
     } catch (err) {
+      console.error("[DEPOSIT ERROR DETAIL]", err);
       setDepositStep('idle');
       setIsProcessing(false);
-      setStatusMsg({ type: 'error', text: err.message || 'Deposit failed or was rejected.' });
-      setTimeout(() => setStatusMsg(null), 6000);
+      
+      let errorText = err.message || 'Deposit failed or was rejected.';
+      if (errorText.includes('Unexpected error')) {
+        errorText = "Wallet Error: Please ensure you are on the correct network (Mainnet/Devnet) and have enough SOL for gas.";
+      }
+      
+      setStatusMsg({ type: 'error', text: errorText });
+      setTimeout(() => setStatusMsg(null), 8000);
     }
   };
 
