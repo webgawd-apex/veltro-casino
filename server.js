@@ -13,6 +13,7 @@ import * as stateStore from "./lib/game/state.js";
 import * as payoutsModule from "./lib/game/payouts.js";
 import * as accountsModule from "./lib/accounts.js";
 import { CoinflipEngine } from "./lib/game/coinflip/engine.js";
+import { initDB } from "./lib/db.js";
 
 const cors = corsLib({ origin: "*" });
 
@@ -25,6 +26,9 @@ const solConnection = new Connection(process.env.RPC_URL || "https://solana-main
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
+
+// Initialize Database
+initDB();
 
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {

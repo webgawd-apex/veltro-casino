@@ -9,8 +9,7 @@
     "dev": "node server.js",
     "build": "next build",
     "start": "NODE_ENV=production node server.js",
-    "lint": "eslint",
-    "postinstall": "prisma generate"
+    "lint": "eslint"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -32,10 +31,9 @@
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "three": "^0.183.2",
-    "@prisma/client": "^6.0.0"
+    "pg": "^8.13.1"
   },
   "devDependencies": {
-    "prisma": "^6.0.0",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
