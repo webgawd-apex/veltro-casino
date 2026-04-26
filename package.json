@@ -1,5 +1,8 @@
 {
   "type": "module",
+  "pnpm": {
+    "frozen-lockfile": false
+  },
   "engines": {
     "node": "22.x",
     "pnpm": ">=9"
