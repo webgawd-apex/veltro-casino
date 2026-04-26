@@ -174,8 +174,11 @@ app.prepare().then(() => {
           return socket.emit("depositError", { message: "Failed to fetch transaction details. Please try again." });
         }
 
+        let solTransferred = 0;
+        let foundRecipient = false;
+        let isCorrectSender = false;
+
         // Find the index of the House Wallet in the transaction's account list
-        // We look in both accountKeys (Legacy) and staticAccountKeys (v0) if needed
         let postIndex = -1;
         const accountKeys = tx.transaction.message.accountKeys;
         
