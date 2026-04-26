@@ -13,6 +13,7 @@ import * as stateStore from "./lib/game/state.js";
 import * as payoutsModule from "./lib/game/payouts.js";
 import * as accountsModule from "./lib/accounts.js";
 import { CoinflipEngine } from "./lib/game/coinflip/engine.js";
+import { initDB } from "./lib/db.js";
 
 const cors = corsLib({ origin: "*" });
 
@@ -26,7 +27,8 @@ const solConnection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https:/
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  await initDB();
   const httpServer = createServer((req, res) => {
     cors(req, res, () => {
       const parsedUrl = parse(req.url, true);
@@ -55,13 +57,14 @@ app.prepare().then(() => {
             if (!engine) return res.writeHead(500).end(JSON.stringify({ error: "Engine not ready" }));
 
             // Guard: check casino balance
-            if (!accountsModule.hasBalance(wallet, amount)) {
+            const balanceCheck = await accountsModule.hasBalance(wallet, amount);
+            if (!balanceCheck) {
               res.writeHead(402, { 'Content-Type': 'application/json' });
               return res.end(JSON.stringify({ error: "Insufficient casino balance" }));
             }
 
             // Debit before flip
-            accountsModule.debitBalance(wallet, amount);
+            await accountsModule.debitBalance(wallet, amount);
 
             // Rig result (house edge)
             let result = Math.random() < 0.97 ? (choice === 'HEADS' ? 'TAILS' : 'HEADS') : choice;
@@ -73,14 +76,14 @@ app.prepare().then(() => {
               profit = (amount * 1.96) - amount;
               status = 'cashed';
               // Credit winnings to in-game balance
-              accountsModule.creditBalance(wallet, amount * 1.96);
-              accountsModule.addBetHistory(wallet, { game: 'Coinflip', multiplier: 1.96, profit, amount });
+              await accountsModule.creditBalance(wallet, amount * 1.96);
+              await accountsModule.addBetHistory(wallet, { game: 'Coinflip', multiplier: 1.96, profit, amount });
             } else {
-              accountsModule.addBetHistory(wallet, { game: 'Coinflip', multiplier: 0, profit: -amount, amount });
+              await accountsModule.addBetHistory(wallet, { game: 'Coinflip', multiplier: 0, profit: -amount, amount });
             }
 
             // Broadcast updated account
-            const updatedAcc = accountsModule.getAccount(wallet);
+            const updatedAcc = await accountsModule.getAccount(wallet);
             if (updatedAcc && global.io) global.io.emit('accountUpdate', updatedAcc);
 
             // Sync with engine memory
@@ -126,9 +129,9 @@ app.prepare().then(() => {
     // ── Account Events ──────────────────────────────────────────
 
     // Get or create casino account for wallet
-    socket.on("getAccount", (wallet) => {
+    socket.on("getAccount", async (wallet) => {
       if (!wallet) return;
-      const account = accountsModule.getOrCreateAccount(wallet);
+      const account = await accountsModule.getOrCreateAccount(wallet);
       socket.emit("accountUpdate", account);
     });
 
@@ -196,11 +199,15 @@ app.prepare().then(() => {
         }
 
         // ✅ Confirmed — credit casino balance
-        const account = accountsModule.creditBalance(wallet, solTransferred);
-        accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
+        const account = await accountsModule.creditBalance(wallet, solTransferred, signature);
+        if (!account) {
+          console.error(`[DEPOSIT CRITICAL] DB Update FAILED for ${wallet} sig=${signature}. MANUAL CREDIT REQUIRED.`);
+          return socket.emit("depositError", { message: "SOL confirmed but database update failed. Contact support with your signature." });
+        }
+        await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
         socket.emit("accountUpdate", account);
         socket.emit("depositSuccess", { amount: solTransferred });
-        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL. New balance: ${account.balance}`);
+        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL. balance: ${account.balance}`);
       } catch (err) {
         console.error("[DEPOSIT ERROR]", err);
         socket.emit("depositError", {
@@ -245,13 +252,14 @@ app.prepare().then(() => {
       const { publicKey, amount, target } = data;
 
       // Guard: check casino balance
-      if (!accountsModule.hasBalance(publicKey, amount)) {
+      const balCheck = await accountsModule.hasBalance(publicKey, amount);
+      if (!balCheck) {
         socket.emit("betError", { message: "Insufficient casino balance. Deposit via your profile." });
         return;
       }
 
       // Debit casino balance immediately
-      const updatedAccount = accountsModule.debitBalance(publicKey, amount);
+      const updatedAccount = await accountsModule.debitBalance(publicKey, amount);
       socket.emit("accountUpdate", updatedAccount);
 
       // Add to round
