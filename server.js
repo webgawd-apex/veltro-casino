@@ -80,9 +80,8 @@ app.prepare().then(() => {
               await accountsModule.addBetHistory(wallet, { game: 'Coinflip', multiplier: 0, profit: -amount, amount });
             }
 
-            // Broadcast updated account
-            const updatedAcc = await accountsModule.getAccount(wallet);
-            if (updatedAcc && global.io) global.io.emit('accountUpdate', updatedAcc);
+            // Broadcast updated account to all sessions
+            await syncAccount(wallet);
 
             // Sync with engine memory
             const currentHistory = engine.state?.getState()?.history || [];
@@ -129,9 +128,19 @@ app.prepare().then(() => {
     // Get or create casino account for wallet
     socket.on("getAccount", async (wallet) => {
       if (!wallet) return;
+      // Join a room specific to this wallet for real-time sync across tabs
+      socket.join(`wallet:${wallet}`);
       const account = await accountsModule.getOrCreateAccount(wallet);
       socket.emit("accountUpdate", account);
     });
+
+    // Helper to broadcast latest account state to all sockets for a wallet
+    const syncAccount = async (wallet) => {
+      const account = await accountsModule.getAccount(wallet);
+      if (account) {
+        io.to(`wallet:${wallet}`).emit("accountUpdate", account);
+      }
+    };
 
     // Deposit: verify on-chain tx then credit casino balance
     socket.on("deposit", async ({ wallet, signature, amount }) => {
@@ -160,30 +169,30 @@ app.prepare().then(() => {
         }
 
         // 2. Fetch full transaction to verify details (Sender, Receiver, Amount)
-        // This is the DEEP VERIFICATION layer
         const tx = await solConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-        if (!tx) {
+        if (!tx || !tx.meta) {
           return socket.emit("depositError", { message: "Failed to fetch transaction details. Please try again." });
         }
 
-        // Find the transfer instruction
-        const innerInstructions = tx.meta?.innerInstructions || [];
-        const instructions = tx.transaction.message.instructions;
+        // Find the index of the House Wallet in the transaction's account list
+        // We look in both accountKeys (Legacy) and staticAccountKeys (v0) if needed
+        let postIndex = -1;
+        const accountKeys = tx.transaction.message.accountKeys;
         
-        let solTransferred = 0;
-        let foundRecipient = false;
-        let isCorrectSender = false;
+        for (let i = 0; i < accountKeys.length; i++) {
+          const key = accountKeys[i].pubkey?.toBase58() || accountKeys[i].toBase58?.() || accountKeys[i];
+          if (key === HOUSE_WALLET) {
+            postIndex = i;
+            break;
+          }
+        }
 
-        // Check for direct transfers or inner transfers (if using some advanced wallets)
-        const allIx = [...instructions];
-        
-        // Simple verification: Check balance changes (most robust method)
-        const postIndex = tx.transaction.message.accountKeys.findIndex(k => k.pubkey.toBase58() === HOUSE_WALLET);
         if (postIndex !== -1) {
           const preBalance = tx.meta.preBalances[postIndex];
           const postBalance = tx.meta.postBalances[postIndex];
           solTransferred = (postBalance - preBalance) / 1e9;
           foundRecipient = true;
+          console.log(`[VERIFY] House Wallet Index: ${postIndex}, Delta: ${solTransferred} SOL`);
         }
 
         // Verify sender
@@ -203,11 +212,13 @@ app.prepare().then(() => {
         }
 
         // ✅ All checks passed — credit casino balance
-        const account = await accountsModule.creditBalance(wallet, solTransferred, signature);
+        await accountsModule.creditBalance(wallet, solTransferred, signature);
         await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
-        socket.emit("accountUpdate", account);
+        
+        // Broadcast to all active sessions for this wallet
+        await syncAccount(wallet);
         socket.emit("depositSuccess", { amount: solTransferred });
-        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL. balance: ${account?.balance}`);
+        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL.`);
         
       } catch (err) {
         console.error("[DEPOSIT ERROR]", err);
@@ -227,11 +238,12 @@ app.prepare().then(() => {
         // Send on-chain first
         await payoutsModule.executePayout({ wallet, amount }, 1.0);
         // Then debit
-        const account = await accountsModule.debitBalance(wallet, amount);
+        await accountsModule.debitBalance(wallet, amount);
         await accountsModule.addBetHistory(wallet, { game: 'Withdrawal', multiplier: null, profit: -amount, amount });
-        socket.emit("accountUpdate", account);
+        
+        await syncAccount(wallet);
         socket.emit("withdrawSuccess", { amount });
-        console.log(`[WITHDRAW] ${wallet.slice(0, 6)} withdrew ${amount} SOL. New balance: ${account?.balance}`);
+        console.log(`[WITHDRAW] ${wallet.slice(0, 6)} withdrew ${amount} SOL.`);
       } catch (err) {
         console.error("[WITHDRAW ERROR]", err.message);
         socket.emit("withdrawError", { message: `Withdrawal failed: ${err.message}` });
@@ -259,8 +271,8 @@ app.prepare().then(() => {
       }
 
       // Debit casino balance immediately
-      const updatedAccount = await accountsModule.debitBalance(publicKey, amount);
-      socket.emit("accountUpdate", updatedAccount);
+      await accountsModule.debitBalance(publicKey, amount);
+      await syncAccount(publicKey);
 
       // Add to round
       playersStore.addPlayer({ wallet: publicKey, amount, target, id: socket.id });
