@@ -42,7 +42,13 @@ export default function ProfileDrawer({ open, onClose }) {
     socket.emit('getAccount', walletStr);
 
     const handleAccountUpdate = (data) => {
-      if (data?.wallet === walletStr) setAccount(data);
+      console.log("[DEBUG] accountUpdate received:", data);
+      if (data?.wallet?.trim() === walletStr?.trim()) {
+        console.log("[DEBUG] Matching wallet, updating state...");
+        setAccount(data);
+      } else {
+        console.warn("[DEBUG] Received accountUpdate for different wallet:", data?.wallet, "vs", walletStr);
+      }
     };
     const handleDepositPending = () => {
       setDepositStep('verifying');
@@ -127,7 +133,7 @@ export default function ProfileDrawer({ open, onClose }) {
       
       let errorText = err.message || 'Deposit failed or was rejected.';
       if (errorText.includes('Unexpected error')) {
-        errorText = "Wallet Error: Please ensure you are on the correct network (Mainnet/Devnet) and have enough SOL for gas.";
+        errorText = "Wallet Error: Please ensure you have enough SOL for gas.";
       }
       
       setStatusMsg({ type: 'error', text: errorText });
@@ -197,9 +203,21 @@ export default function ProfileDrawer({ open, onClose }) {
         <div className="px-6 py-5 border-b border-white/[0.06] flex-shrink-0 bg-white/[0.01]">
           <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600 mb-3">Casino Balance</p>
           <div className="flex items-end gap-2.5 mb-1">
-            <span className="text-[2.5rem] leading-none font-black text-white font-mono tabular-nums">
-              {account ? account.balance.toFixed(4) : '0.0000'}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-[2.5rem] leading-none font-black text-white font-mono tabular-nums">
+                {account ? account.balance.toFixed(4) : '0.0000'}
+              </span>
+              <button 
+                onClick={() => {
+                  console.log("[DEBUG] Manual refresh clicked");
+                  socket.emit('getAccount', walletStr);
+                }}
+                className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/40 hover:text-white"
+                title="Refresh Balance"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
             <span className="text-emerald-400 font-black text-sm mb-1">SOL</span>
           </div>
           <p className="text-[10px] text-zinc-700 uppercase tracking-widest font-mono">≈ ${usdEst} USD</p>
@@ -283,7 +301,7 @@ export default function ProfileDrawer({ open, onClose }) {
               ) : depositStep === 'verifying' ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  Verifying on-chain...
+                  Verifying...
                 </span>
               ) : 'Deposit to Casino'}
             </button>
