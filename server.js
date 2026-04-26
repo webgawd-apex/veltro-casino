@@ -219,13 +219,15 @@ app.prepare().then(() => {
         }
 
         // ✅ All checks passed — credit casino balance
-        await accountsModule.creditBalance(wallet, solTransferred, signature);
+        const updatedAccount = await accountsModule.creditBalance(wallet, solTransferred, signature);
         await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
         
-        // Broadcast to all active sessions for this wallet
+        // 1. Direct response to the current socket (fastest)
+        socket.emit("depositSuccess", { amount: solTransferred, account: updatedAccount });
+        
+        // 2. Broadcast to all other active sessions for this wallet
         await syncAccount(wallet);
-        socket.emit("depositSuccess", { amount: solTransferred });
-        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL.`);
+        console.log(`[DEPOSIT ✅] ${wallet.trim().slice(0, 6)} confirmed ${solTransferred} SOL.`);
         
       } catch (err) {
         console.error("[DEPOSIT ERROR]", err);
@@ -245,12 +247,15 @@ app.prepare().then(() => {
         // Send on-chain first
         await payoutsModule.executePayout({ wallet, amount }, 1.0);
         // Then debit
-        await accountsModule.debitBalance(wallet, amount);
+        const updatedAccount = await accountsModule.debitBalance(wallet, amount);
         await accountsModule.addBetHistory(wallet, { game: 'Withdrawal', multiplier: null, profit: -amount, amount });
         
+        // Direct response
+        socket.emit("withdrawSuccess", { amount, account: updatedAccount });
+        
+        // Broadcast
         await syncAccount(wallet);
-        socket.emit("withdrawSuccess", { amount });
-        console.log(`[WITHDRAW] ${wallet.slice(0, 6)} withdrew ${amount} SOL.`);
+        console.log(`[WITHDRAW] ${wallet.trim().slice(0, 6)} withdrew ${amount} SOL.`);
       } catch (err) {
         console.error("[WITHDRAW ERROR]", err.message);
         socket.emit("withdrawError", { message: `Withdrawal failed: ${err.message}` });

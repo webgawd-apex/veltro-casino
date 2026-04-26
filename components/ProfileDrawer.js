@@ -53,10 +53,14 @@ export default function ProfileDrawer({ open, onClose }) {
     const handleDepositPending = () => {
       setDepositStep('verifying');
     };
-    const handleDepositSuccess = ({ amount }) => {
+    const handleDepositSuccess = (data) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setStatusMsg({ type: 'success', text: `✅ ${amount} SOL deposited successfully!` });
+      setStatusMsg({ type: 'success', text: `✅ ${data.amount} SOL deposited successfully!` });
+      if (data.account) {
+        console.log("[DEBUG] depositSuccess updated account:", data.account);
+        setAccount(data.account);
+      }
       setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
@@ -65,8 +69,12 @@ export default function ProfileDrawer({ open, onClose }) {
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
-    const handleWithdrawSuccess = ({ amount }) => {
-      setStatusMsg({ type: 'success', text: `Withdrew ${amount} SOL to your wallet!` });
+    const handleWithdrawSuccess = (data) => {
+      setStatusMsg({ type: 'success', text: `Withdrew ${data.amount} SOL to your wallet!` });
+      if (data.account) {
+        console.log("[DEBUG] withdrawSuccess updated account:", data.account);
+        setAccount(data.account);
+      }
       setTimeout(() => setStatusMsg(null), 4000);
     };
     const handleWithdrawError = ({ message }) => {
@@ -203,21 +211,9 @@ export default function ProfileDrawer({ open, onClose }) {
         <div className="px-6 py-5 border-b border-white/[0.06] flex-shrink-0 bg-white/[0.01]">
           <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600 mb-3">Casino Balance</p>
           <div className="flex items-end gap-2.5 mb-1">
-            <div className="flex items-center gap-3">
-              <span className="text-[2.5rem] leading-none font-black text-white font-mono tabular-nums">
-                {account ? account.balance.toFixed(4) : '0.0000'}
-              </span>
-              <button 
-                onClick={() => {
-                  console.log("[DEBUG] Manual refresh clicked");
-                  socket.emit('getAccount', walletStr);
-                }}
-                className="p-2 rounded-full hover:bg-white/10 transition-colors text-white/40 hover:text-white"
-                title="Refresh Balance"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </button>
-            </div>
+            <span className="text-[2.5rem] leading-none font-black text-white font-mono tabular-nums">
+              {account ? account.balance.toFixed(4) : '0.0000'}
+            </span>
             <span className="text-emerald-400 font-black text-sm mb-1">SOL</span>
           </div>
           <p className="text-[10px] text-zinc-700 uppercase tracking-widest font-mono">≈ ${usdEst} USD</p>
