@@ -1,10 +1,10 @@
+import 'dotenv/config';
 import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 import { Server } from "socket.io";
 import { Connection, PublicKey } from "@solana/web3.js";
 import corsLib from "cors";
-import 'dotenv/config';
 
 // Import game logic modules
 import * as engineObj from "./lib/game/engine.js";
