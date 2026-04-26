@@ -216,25 +216,44 @@ app.prepare().then(async () => {
       }
     });
 
-    // Withdraw: debit casino balance then send on-chain from house
+    // Withdrawal: debit casino balance then send on-chain SOL
     socket.on("withdraw", async ({ wallet, amount }) => {
-      if (!wallet || !amount) return;
+      if (!wallet || !amount || amount <= 0) return;
+
       try {
-        if (!accountsModule.hasBalance(wallet, amount)) {
-          socket.emit("withdrawError", { message: "Insufficient casino balance." });
-          return;
+        // 1. Debit in-game balance first (safety first)
+        const updatedAccount = await accountsModule.debitBalance(wallet, amount);
+        if (!updatedAccount) {
+          return socket.emit("withdrawError", { message: "Insufficient casino balance." });
         }
-        // Send on-chain first
-        await payoutsModule.executePayout({ wallet, amount }, 1.0);
-        // Then debit
-        const account = accountsModule.debitBalance(wallet, amount);
-        accountsModule.addBetHistory(wallet, { game: 'Withdrawal', multiplier: null, profit: -amount, amount });
-        socket.emit("accountUpdate", account);
-        socket.emit("withdrawSuccess", { amount });
-        console.log(`[WITHDRAW] ${wallet.slice(0, 6)} withdrew ${amount} SOL. New balance: ${account.balance}`);
+
+        // 2. Execute on-chain payout
+        try {
+          const signature = await payoutsModule.executePayout({ wallet, amount }, 1.0);
+          
+          // 3. Log history and notify success
+          await accountsModule.addBetHistory(wallet, { game: 'Withdrawal', multiplier: null, profit: -amount, amount });
+          
+          // Re-fetch to get latest balance after debit
+          const finalAccount = await accountsModule.getAccount(wallet);
+          socket.emit("accountUpdate", finalAccount);
+          socket.emit("withdrawSuccess", { amount, signature });
+          console.log(`[WITHDRAW ✅] ${wallet.slice(0, 6)} withdrew ${amount} SOL. Sig: ${signature}`);
+        } catch (payoutErr) {
+          // 4. REFUND LOOP: If on-chain fails, give back the in-game balance
+          console.error(`[WITHDRAW FAILED] On-chain error for ${wallet}:`, payoutErr.message);
+          await accountsModule.creditBalance(wallet, amount); 
+          const refundedAccount = await accountsModule.getAccount(wallet);
+          socket.emit("accountUpdate", refundedAccount);
+          
+          // Send the ACTUAL error message to the user
+          socket.emit("withdrawError", { 
+            message: `Withdrawal failed: ${payoutErr.message}` 
+          });
+        }
       } catch (err) {
-        console.error("[WITHDRAW ERROR]", err);
-        socket.emit("withdrawError", { message: "Withdrawal failed. Please try again." });
+        console.error("[WITHDRAW CRITICAL]", err);
+        socket.emit("withdrawError", { message: "Withdrawal encountered a critical error. Please try again." });
       }
     });
 
