@@ -31,6 +31,8 @@ export default function ProfileDrawer({ open, onClose }) {
   const [depositStep, setDepositStep] = useState('idle'); // 'idle' | 'signing' | 'verifying'
   const [account, setAccount] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null); // { type: 'success'|'error', text }
+  const [payUrl, setPayUrl] = useState('');
+  const [payReference, setPayReference] = useState(null);
 
   const walletStr = publicKey?.toBase58() ?? '';
   const playerId = walletStr.slice(0, 6).toUpperCase();
