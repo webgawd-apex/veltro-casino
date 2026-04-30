@@ -4,8 +4,8 @@ import { parse } from "url";
 import next from "next";
 import { Server } from "socket.io";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { findReference, validateTransfer } from "@solana/pay";
-import BigNumber from "bignumber.js";
+import { findReference, validateTransfer } from '@solana/pay';
+import BigNumber from 'bignumber.js';
 import corsLib from "cors";
 
 // Import game logic modules
@@ -137,78 +137,73 @@ app.prepare().then(async () => {
       socket.emit("accountUpdate", account);
     });
 
-    // Solana Pay: Watch for a specific reference on-chain
+    // Solana Pay: watch for a transaction with the given reference
     socket.on("watchSolanaPay", async ({ wallet, amount, reference }) => {
       if (!wallet || !amount || !reference) return;
 
+      console.log(`[SOLANA PAY] Watching for ${amount} SOL deposit from ${wallet.slice(0, 6)} (Ref: ${reference.slice(0, 6)})`);
+      
       const referencePubkey = new PublicKey(reference);
-      const expectedAmount = new BigNumber(amount);
-      const housePubkey = new PublicKey(HOUSE_WALLET);
+      const recipientPubkey = new PublicKey(HOUSE_WALLET);
+      const amountBN = new BigNumber(amount);
+      
+      let signatureInfo;
+      let interval;
+      let timeout;
 
-      console.log(`[SOLANA PAY] Monitoring ${wallet.slice(0,6)} for ${amount} SOL transfer. Ref: ${reference}`);
+      const cleanup = () => {
+        if (interval) clearInterval(interval);
+        if (timeout) clearTimeout(timeout);
+      };
 
-      // Polling interval
-      const interval = setInterval(async () => {
+      // Poll for the transaction signature
+      interval = setInterval(async () => {
         try {
-          // Check if socket is still connected
-          if (!socket.connected) {
-            clearInterval(interval);
-            return;
+          signatureInfo = await findReference(solConnection, referencePubkey, { finality: 'confirmed' });
+          if (signatureInfo) {
+            cleanup();
+            verifyPayment(signatureInfo.signature);
           }
-
-          // 1. Locate the transaction
-          const found = await findReference(solConnection, referencePubkey, { finality: 'confirmed' });
-          
-          if (found) {
-            clearInterval(interval);
-            console.log(`[SOLANA PAY] Found transaction for ${wallet.slice(0,6)}. Signature: ${found.signature}`);
-
-            // 2. Validate the transfer details
-            try {
-              await validateTransfer(solConnection, found.signature, {
-                recipient: housePubkey,
-                amount: expectedAmount,
-                reference: referencePubkey,
-              }, { commitment: 'confirmed' });
-
-              // 3. Success! Credit the user
-              const account = await accountsModule.creditBalance(wallet, amount, found.signature);
-              if (account) {
-                await accountsModule.addBetHistory(wallet, { 
-                  game: 'Deposit', 
-                  multiplier: null, 
-                  profit: amount, 
-                  amount: amount 
-                });
-                socket.emit("accountUpdate", account);
-                socket.emit("depositSuccess", { amount });
-                console.log(`[SOLANA PAY ✅] ${wallet.slice(0,6)} confirmed. New balance: ${account.balance}`);
-              }
-            } catch (valErr) {
-              console.error("[SOLANA PAY VALIDATION ERROR]", valErr.message);
-              socket.emit("depositError", { message: "Payment validation failed. Please contact support." });
-            }
-          }
-        } catch (err) {
-          // findReference throws if not found, which is fine during polling
-          if (err.name !== 'FindReferenceError') {
-            console.error("[SOLANA PAY WATCH ERROR]", err);
-          }
+        } catch (e) {
+          // Keep polling
         }
-      }, 3000); // Poll every 3 seconds
+      }, 3000);
 
-      // Stop watching after 10 minutes (timeout)
-      setTimeout(() => {
-        clearInterval(interval);
+      // Stop watching after 10 minutes
+      timeout = setTimeout(() => {
+        cleanup();
+        socket.emit("depositError", { message: "Payment timeout. The request has expired." });
       }, 600000);
 
-      // Also handle explicit stop request
-      socket.on("stopWatchSolanaPay", ({ reference: refStop }) => {
-        if (refStop === reference) {
-          clearInterval(interval);
-          console.log(`[SOLANA PAY] Stopped monitoring ref: ${reference}`);
+      const verifyPayment = async (signature) => {
+        try {
+          socket.emit("depositPending", { message: "Payment detected! Verifying..." });
+          
+          // Validate the transfer details
+          await validateTransfer(solConnection, signature, {
+            recipient: recipientPubkey,
+            amount: amountBN,
+            reference: referencePubkey,
+          }, { commitment: 'confirmed' });
+
+          // ✅ Success - credit balance
+          const account = await accountsModule.creditBalance(wallet, amount, signature);
+          if (account) {
+            await accountsModule.addBetHistory(wallet, { 
+              game: 'Deposit', 
+              multiplier: null, 
+              profit: amount, 
+              amount 
+            });
+            socket.emit("accountUpdate", account);
+            socket.emit("depositSuccess", { amount });
+            console.log(`[SOLANA PAY ✅] ${wallet.slice(0, 6)} deposited ${amount} SOL. Sig: ${signature}`);
+          }
+        } catch (err) {
+          console.error("[SOLANA PAY VERIFY ERROR]", err);
+          socket.emit("depositError", { message: "Payment verification failed. Please contact support." });
         }
-      });
+      };
     });
 
     // Withdrawal: debit casino balance then send on-chain SOL

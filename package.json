@@ -4,7 +4,6 @@
     "node": "22.x",
     "pnpm": ">=9"
   },
-  "packageManager": "pnpm@10.33.0",
   "private": true,
   "scripts": {
     "dev": "node server.js",
