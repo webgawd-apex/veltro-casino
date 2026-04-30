@@ -5,6 +5,8 @@ import next from "next";
 import { Server } from "socket.io";
 import { Connection, PublicKey } from "@solana/web3.js";
 import corsLib from "cors";
+import { findReference, validateTransfer } from '@solana/pay';
+import BigNumber from 'bignumber.js';
 
 // Import game logic modules
 import * as engineObj from "./lib/game/engine.js";
@@ -135,83 +137,66 @@ app.prepare().then(async () => {
       socket.emit("accountUpdate", account);
     });
 
-    // Deposit: verify on-chain tx then credit casino balance
-    socket.on("deposit", async ({ wallet, signature, amount }) => {
-      if (!wallet || !signature || !amount) return;
+    // Solana Pay Deposit Watcher
+    socket.on("watchSolanaPay", async ({ wallet, amount, reference }) => {
+      if (!wallet || !amount || !reference) return;
 
-      // Tell the UI we're verifying so it can show a loading state
-      socket.emit("depositPending", { message: "Verifying on-chain..." });
+      socket.emit("depositPending", { message: "Waiting for payment..." });
 
       try {
-        let confirmedData = null;
+        const referencePubkey = new PublicKey(reference);
+        const recipientPubkey = new PublicKey(HOUSE_WALLET);
+        const expectedAmount = new BigNumber(amount);
         
-        // 1. Wait for confirmation
-        // 30 retries × 1.5s = 45 second window
-        for (let i = 0; i < 30; i++) {
-          const statusRes = await solConnection.getSignatureStatus(signature, { searchTransactionHistory: true });
-          const status = statusRes?.value;
-          if (status?.err) throw new Error("Transaction failed on-chain.");
-          if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
-            confirmedData = status;
-            break;
+        let signatureInfo;
+        
+        // Poll for the transaction for up to 5 minutes (150 * 2s)
+        for (let i = 0; i < 150; i++) {
+          try {
+            signatureInfo = await findReference(solConnection, referencePubkey, { finality: 'confirmed' });
+            if (signatureInfo) break;
+          } catch (e) {
+            // findReference throws if not found yet. Ignore and continue polling.
           }
-          await new Promise(r => setTimeout(r, 1500));
+          await new Promise(r => setTimeout(r, 2000));
         }
 
-        if (!confirmedData) {
-          return socket.emit("depositError", { message: "Verification timeout. If debited, contact support with your signature." });
+        if (!signatureInfo) {
+          return socket.emit("depositError", { message: "Payment request timed out." });
         }
 
-        // 2. Fetch full transaction to verify details (Sender, Receiver, Amount)
-        const tx = await solConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-        if (!tx) {
-          return socket.emit("depositError", { message: "Failed to fetch transaction details. Please try again." });
+        const signature = signatureInfo.signature;
+        socket.emit("depositPending", { message: "Payment found! Verifying..." });
+
+        // Validate the exact transfer
+        try {
+          await validateTransfer(
+            solConnection,
+            signature,
+            { recipient: recipientPubkey, amount: expectedAmount, reference: referencePubkey },
+            { commitment: 'confirmed' }
+          );
+        } catch (validationErr) {
+          console.error(`[DEPOSIT VALIDATION FAILED] ${signature}:`, validationErr.message);
+          return socket.emit("depositError", { message: "Payment validation failed. Invalid amount or recipient." });
         }
 
-        let solTransferred = 0;
-        let foundRecipient = false;
-        let isCorrectSender = false;
-
-        // Simple verification: Check balance changes (most robust method)
-        const postIndex = tx.transaction.message.accountKeys.findIndex(k => 
-          (typeof k === 'string' ? k : k.pubkey.toBase58()) === HOUSE_WALLET
-        );
-        
-        if (postIndex !== -1) {
-          const preBalance = tx.meta.preBalances[postIndex];
-          const postBalance = tx.meta.postBalances[postIndex];
-          solTransferred = (postBalance - preBalance) / 1e9;
-          if (solTransferred > 0) foundRecipient = true;
-        }
-
-        // Verify sender
-        const senderPubkey = tx.transaction.message.accountKeys[0];
-        const senderStr = typeof senderPubkey === 'string' ? senderPubkey : senderPubkey.pubkey.toBase58();
-        if (senderStr === wallet) isCorrectSender = true;
-
-        if (!foundRecipient || solTransferred < amount - 0.001) {
-          console.warn(`[DEPOSIT FAILED] Mismatch. Found: ${solTransferred}, Expected: ${amount}`);
-          return socket.emit("depositError", { message: "Verification failed: Recipient or Amount mismatch." });
-        }
-
-        if (!isCorrectSender) {
-          return socket.emit("depositError", { message: "Verification failed: Sender mismatch." });
-        }
-
+        // It's valid!
         // ✅ Confirmed — credit casino balance
-        const account = await accountsModule.creditBalance(wallet, solTransferred, signature);
+        const account = await accountsModule.creditBalance(wallet, amount, signature);
         if (!account) {
           console.error(`[DEPOSIT CRITICAL] DB Update FAILED for ${wallet} sig=${signature}. MANUAL CREDIT REQUIRED.`);
           return socket.emit("depositError", { message: "SOL confirmed but database update failed. Contact support with your signature." });
         }
-        await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
+        await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: amount, amount: amount });
         socket.emit("accountUpdate", account);
-        socket.emit("depositSuccess", { amount: solTransferred });
-        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${solTransferred} SOL. balance: ${account.balance}`);
+        socket.emit("depositSuccess", { amount: amount });
+        console.log(`[DEPOSIT ✅] ${wallet.slice(0, 6)} confirmed ${amount} SOL via Solana Pay. balance: ${account.balance}`);
+
       } catch (err) {
-        console.error("[DEPOSIT ERROR]", err);
+        console.error("[SOLANA PAY ERROR]", err);
         socket.emit("depositError", {
-          message: "Deposit verification encountered an error. Please contact support."
+          message: "Payment verification encountered an error. Please contact support."
         });
       }
     });
