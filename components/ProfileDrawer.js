@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, TransactionInstruction, Keypair } from '@solana/web3.js';
+import { PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { encodeURL } from '@solana/pay';
-import BigNumber from 'bignumber.js';
 import { QRCodeSVG } from 'qrcode.react';
+import BigNumber from 'bignumber.js';
 import { socket } from '../lib/socket';
 
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -26,11 +26,12 @@ export default function ProfileDrawer({ open, onClose }) {
   const { connection } = useConnection();
 
   const [activeTab, setActiveTab] = useState('deposit');
+  const [usdEst, setUsdEst] = useState('0.00');
+  const [payUrl, setPayUrl] = useState('');
+  const [payReference, setPayReference] = useState('');
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [depositStep, setDepositStep] = useState('idle'); // 'idle' | 'paying' | 'verifying'
-  const [payUrl, setPayUrl] = useState(null);
-  const [payReference, setPayReference] = useState(null);
+  const [depositStep, setDepositStep] = useState('idle'); // 'idle' | 'signing' | 'verifying'
   const [account, setAccount] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null); // { type: 'success'|'error', text }
 
@@ -81,16 +82,12 @@ export default function ProfileDrawer({ open, onClose }) {
     const handleDepositSuccess = ({ amount }) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setPayUrl(null);
-      setPayReference(null);
       setStatusMsg({ type: 'success', text: `${amount} SOL deposited successfully!` });
       setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setPayUrl(null);
-      setPayReference(null);
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
@@ -120,31 +117,49 @@ export default function ProfileDrawer({ open, onClose }) {
     };
   }, [open, publicKey, walletStr]);
 
-  const handleGeneratePayRequest = () => {
-    if (!amount || parseFloat(amount) <= 0) return;
-    
+  const handleDeposit = async () => {
+    if (!publicKey || !amount || parseFloat(amount) <= 0) return;
+    setIsProcessing(true);
+    setDepositStep('signing');
+    setStatusMsg(null);
+
     try {
-      const referenceKeypair = Keypair.generate();
-      const reference = referenceKeypair.publicKey;
       const parsedAmount = new BigNumber(amount);
+      const reference = Keypair.generate().publicKey;
       
       const url = encodeURL({
         recipient: HOUSE_WALLET,
         amount: parsedAmount,
-        reference,
+        reference: [reference],
         label: 'Veltro Casino',
         message: 'Deposit to Veltro Casino',
       });
-      
+
       setPayUrl(url.toString());
       setPayReference(reference.toBase58());
-      setDepositStep('paying');
       
-      socket.emit('watchSolanaPay', { wallet: walletStr, amount: parseFloat(amount), reference: reference.toBase58() });
+      // Tell server to watch for this payment
+      socket.emit('watchSolanaPay', { 
+        wallet: walletStr, 
+        amount: parseFloat(amount), 
+        reference: reference.toBase58() 
+      });
+
+      console.log(`[SOLANA PAY] Request generated for ${amount} SOL. Ref: ${reference.toBase58()}`);
     } catch (err) {
-      setStatusMsg({ type: 'error', text: 'Failed to generate payment request' });
-      setTimeout(() => setStatusMsg(null), 4000);
+      console.error("[SOLANA PAY ERROR]", err);
+      setIsProcessing(false);
+      setDepositStep('idle');
+      setStatusMsg({ type: 'error', text: 'Failed to generate payment request.' });
     }
+  };
+
+  const handleCancelDeposit = () => {
+    setPayUrl('');
+    setPayReference('');
+    setIsProcessing(false);
+    setDepositStep('idle');
+    socket.emit('stopWatchSolanaPay', { reference: payReference });
   };
 
   const handleWithdraw = async () => {
@@ -233,7 +248,7 @@ export default function ProfileDrawer({ open, onClose }) {
             Deposit
           </button>
           <button
-            onClick={() => { setActiveTab('withdraw'); setAmount(''); setPayUrl(null); setPayReference(null); setDepositStep('idle'); }}
+            onClick={() => { setActiveTab('withdraw'); setAmount(''); }}
             className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'withdraw' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
           >
             Withdraw
@@ -282,44 +297,48 @@ export default function ProfileDrawer({ open, onClose }) {
           )}
 
           {activeTab === 'deposit' ? (
-            depositStep === 'paying' && payUrl ? (
-              <div className="flex flex-col items-center gap-4 bg-white/5 p-5 rounded-xl border border-white/10 mt-2 shadow-inner">
-                <div className="p-3 bg-white rounded-xl shadow-[0_0_20px_rgba(147,51,234,0.3)]">
-                  <QRCodeSVG value={payUrl} size={180} />
+            <div className="space-y-3">
+              {!payUrl ? (
+                <button
+                  onClick={handleDeposit}
+                  disabled={isProcessing || !amount || parseFloat(amount) <= 0}
+                  className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20"
+                >
+                  Generate Deposit Request
+                </button>
+              ) : (
+                <div className="flex flex-col items-center gap-4 py-4 bg-white/[0.03] rounded-2xl border border-white/5 animate-in fade-in zoom-in duration-300">
+                  <div className="p-3 bg-white rounded-xl shadow-2xl">
+                    <QRCodeSVG value={payUrl} size={160} level="M" />
+                  </div>
+                  
+                  <div className="text-center space-y-1 px-4">
+                    <p className="text-white font-black text-[10px] uppercase tracking-widest">Scan to Pay</p>
+                    <p className="text-zinc-500 text-[9px] font-mono leading-tight">Send {amount} SOL to confirm deposit</p>
+                  </div>
+
+                  <div className="flex gap-2 w-full px-4">
+                    <a
+                      href={payUrl}
+                      className="flex-1 h-10 bg-purple-600 hover:bg-purple-500 text-white flex items-center justify-center rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-purple-900/20"
+                    >
+                      Pay in App
+                    </a>
+                    <button
+                      onClick={handleCancelDeposit}
+                      className="flex-1 h-10 bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-emerald-400 text-[9px] font-bold animate-pulse">
+                    <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
+                    Waiting for blockchain confirmation...
+                  </div>
                 </div>
-                <p className="text-[10px] text-zinc-400 font-mono text-center tracking-widest uppercase">Scan with your Solana wallet<br/>or use the button below</p>
-                <div className="flex gap-2 w-full mt-1">
-                  <button
-                    onClick={() => { setPayUrl(null); setDepositStep('idle'); }}
-                    className="flex-1 h-12 bg-white/10 hover:bg-white/20 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 border border-white/5"
-                  >
-                    Cancel
-                  </button>
-                  <a
-                    href={payUrl}
-                    className="flex flex-1 items-center justify-center h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 shadow-lg shadow-purple-900/20"
-                  >
-                    Open Wallet
-                  </a>
-                </div>
-              </div>
-            ) : depositStep === 'verifying' ? (
-              <button
-                disabled
-                className="w-full h-12 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all opacity-80 cursor-wait shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 mt-2"
-              >
-                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                Verifying Payment...
-              </button>
-            ) : (
-              <button
-                onClick={handleGeneratePayRequest}
-                disabled={isProcessing || !amount || parseFloat(amount) <= 0}
-                className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20 mt-2"
-              >
-                Generate Deposit Request
-              </button>
-            )
+              )}
+            </div>
           ) : (
             <button
               onClick={handleWithdraw}
@@ -335,8 +354,8 @@ export default function ProfileDrawer({ open, onClose }) {
             </button>
           )}
 
-          {activeTab === 'deposit' && (
-            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">One Phantom signature required</p>
+          {activeTab === 'deposit' && !payUrl && (
+            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">Uses Solana Pay for secure transfers</p>
           )}
         </div>
 
