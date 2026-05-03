@@ -5,7 +5,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, TransactionInstruction, Keypair } from '@solana/web3.js';
 import { encodeURL } from '@solana/pay';
 import BigNumber from 'bignumber.js';
-import { QRCodeSVG } from 'qrcode.react';
+
 import { socket } from '../lib/socket';
 
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -33,6 +33,7 @@ export default function ProfileDrawer({ open, onClose }) {
   const [statusMsg, setStatusMsg] = useState(null); // { type: 'success'|'error', text }
   const [payUrl, setPayUrl] = useState('');
   const [payReference, setPayReference] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const walletStr = publicKey?.toBase58() ?? '';
   const playerId = walletStr.slice(0, 6).toUpperCase();
@@ -190,7 +191,7 @@ export default function ProfileDrawer({ open, onClose }) {
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-full sm:w-[340px] bg-zinc-950 border-l border-white/[0.07] z-50 flex flex-col shadow-[−20px_0_60px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-full sm:w-[340px] bg-zinc-950 border-l border-white/[0.07] z-50 flex flex-col shadow-[-20px_0_60px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* ── Header ─────────────────────────────────── */}
         <div className="relative p-6 pb-5 border-b border-white/[0.06] flex-shrink-0">
@@ -216,6 +217,9 @@ export default function ProfileDrawer({ open, onClose }) {
             </div>
           </div>
         </div>
+
+        {/* ── Scrollable Body ────────────────────────── */}
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
 
         {/* ── Balance ─────────────────────────────────── */}
         <div className="px-6 py-5 border-b border-white/[0.06] flex-shrink-0 bg-white/[0.01]">
@@ -295,37 +299,90 @@ export default function ProfileDrawer({ open, onClose }) {
 
           {activeTab === 'deposit' ? (
             payUrl ? (
-              <div className="flex flex-col items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
-                <div className="p-3 bg-white rounded-lg shadow-xl shadow-black/50 overflow-hidden">
-                  <QRCodeSVG value={payUrl} size={160} />
+              /* ── Copy Payment Link UI ── */
+              <div className="flex flex-col gap-3 p-4 bg-white/5 rounded-xl border border-white/10">
+                {/* Header */}
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/70 text-center">
+                  Send exactly <span className="text-purple-400">{amount} SOL</span> to complete deposit
+                </p>
+
+                {/* House address display */}
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] text-zinc-600 uppercase tracking-widest font-black">Recipient Address</span>
+                  <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2">
+                    <span className="text-[10px] text-zinc-300 font-mono flex-1 truncate">
+                      {HOUSE_WALLET.toBase58()}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-white/60 font-black uppercase tracking-widest leading-relaxed">
-                    Scan with Phantom or Solflare
-                  </p>
-                </div>
-                <div className="flex w-full gap-2">
-                  <a
-                    href={payUrl}
-                    className="flex-1 h-10 flex items-center justify-center bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-black uppercase rounded-lg transition-all active:scale-95 shadow-lg shadow-purple-900/20"
-                  >
-                    Open Wallet
-                  </a>
+
+                {/* Copy Payment Link button */}
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(payUrl).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2500);
+                    }).catch(() => {
+                      // Fallback for older browsers
+                      const el = document.createElement('textarea');
+                      el.value = payUrl;
+                      document.body.appendChild(el);
+                      el.select();
+                      document.execCommand('copy');
+                      document.body.removeChild(el);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2500);
+                    });
+                  }}
+                  className={`w-full h-11 flex items-center justify-center gap-2 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all active:scale-95 ${
+                    copied
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
+                      : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/30'
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy Payment Link
+                    </>
+                  )}
+                </button>
+
+                {/* Instruction hint */}
+                <p className="text-[9px] text-zinc-600 text-center leading-relaxed">
+                  Paste the link in Phantom → <span className="text-zinc-400">Send → Scan or paste</span>
+                </p>
+
+                {/* Waiting indicator + Cancel */}
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center gap-2 text-purple-400 text-[10px] font-black uppercase animate-pulse">
+                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Awaiting payment...
+                  </div>
                   <button
                     onClick={() => {
                       setPayUrl('');
                       setPayReference(null);
                       setDepositStep('idle');
                       setIsProcessing(false);
+                      setCopied(false);
                     }}
-                    className="h-10 px-4 bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase rounded-lg transition-all"
+                    className="text-[10px] font-black uppercase tracking-widest text-zinc-600 hover:text-rose-400 transition-colors"
                   >
                     Cancel
                   </button>
-                </div>
-                <div className="flex items-center gap-2 text-purple-400 text-[10px] font-black uppercase animate-pulse">
-                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  Waiting for payment...
                 </div>
               </div>
             ) : (
@@ -357,13 +414,13 @@ export default function ProfileDrawer({ open, onClose }) {
             </button>
           )}
 
-          {activeTab === 'deposit' && (
-            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">One Phantom signature required</p>
+          {activeTab === 'deposit' && !payUrl && (
+            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">Powered by Solana Pay</p>
           )}
         </div>
 
         {/* ── Bet History ──────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="flex-1 min-h-0">
           <div className="px-5 py-3 border-b border-white/[0.06]">
             <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600">History</p>
           </div>
@@ -411,6 +468,7 @@ export default function ProfileDrawer({ open, onClose }) {
             </div>
           )}
         </div>
+        </div> {/* end scrollable body */}
 
         {/* ── Footer ──────────────────────────────────── */}
         <div className="p-4 border-t border-white/[0.06] flex-shrink-0">
