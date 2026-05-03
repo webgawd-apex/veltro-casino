@@ -5,7 +5,6 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, TransactionInstruction, Keypair } from '@solana/web3.js';
 import { encodeURL } from '@solana/pay';
 import BigNumber from 'bignumber.js';
-
 import { socket } from '../lib/socket';
 
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -191,7 +190,7 @@ export default function ProfileDrawer({ open, onClose }) {
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-full sm:w-[340px] bg-zinc-950 border-l border-white/[0.07] z-50 flex flex-col shadow-[-20px_0_60px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-full sm:w-[340px] bg-zinc-950 border-l border-white/[0.07] z-50 flex flex-col shadow-[−20px_0_60px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* ── Header ─────────────────────────────────── */}
         <div className="relative p-6 pb-5 border-b border-white/[0.06] flex-shrink-0">
@@ -218,11 +217,11 @@ export default function ProfileDrawer({ open, onClose }) {
           </div>
         </div>
 
-        {/* ── Scrollable Body ────────────────────────── */}
-        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
-
-        {/* ── Balance ─────────────────────────────────── */}
-        <div className="px-6 py-5 border-b border-white/[0.06] flex-shrink-0 bg-white/[0.01]">
+        {/* ── Scrollable Content Wrapper ──────────────────────── */}
+        <div className="flex-1 overflow-y-auto min-h-0 custom-scrollbar">
+          
+          {/* ── Balance ─────────────────────────────────── */}
+          <div className="px-6 py-5 border-b border-white/[0.06] bg-white/[0.01]">
           <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600 mb-3">Casino Balance</p>
           <div className="flex items-end gap-2.5 mb-1">
             <span className="text-[2.5rem] leading-none font-black text-white font-mono tabular-nums">
@@ -233,31 +232,30 @@ export default function ProfileDrawer({ open, onClose }) {
           <p className="text-[10px] text-zinc-700 uppercase tracking-widest font-mono">≈ ${usdEst} USD</p>
         </div>
 
-        {/* ── Status Message ─────────────────────────── */}
-        {statusMsg && (
-          <div className={`mx-4 mt-4 px-4 py-2.5 rounded-xl text-xs font-bold text-center border flex-shrink-0 ${statusMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
-            {statusMsg.text}
+          {statusMsg && (
+            <div className={`mx-4 mt-4 px-4 py-2.5 rounded-xl text-xs font-bold text-center border ${statusMsg.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+              {statusMsg.text}
+            </div>
+          )}
+
+          {/* ── Tab Bar ─────────────────────────────────── */}
+          <div className="flex p-4 gap-2 border-b border-white/[0.06]">
+            <button
+              onClick={() => { setActiveTab('deposit'); setAmount(''); }}
+              className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'deposit' ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
+            >
+              Deposit
+            </button>
+            <button
+              onClick={() => { setActiveTab('withdraw'); setAmount(''); }}
+              className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'withdraw' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
+            >
+              Withdraw
+            </button>
           </div>
-        )}
 
-        {/* ── Tab Bar ─────────────────────────────────── */}
-        <div className="flex p-4 gap-2 border-b border-white/[0.06] flex-shrink-0">
-          <button
-            onClick={() => { setActiveTab('deposit'); setAmount(''); }}
-            className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'deposit' ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
-          >
-            Deposit
-          </button>
-          <button
-            onClick={() => { setActiveTab('withdraw'); setAmount(''); }}
-            className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'withdraw' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
-          >
-            Withdraw
-          </button>
-        </div>
-
-        {/* ── Action Panel ─────────────────────────────── */}
-        <div className="p-4 border-b border-white/[0.06] flex-shrink-0">
+          {/* ── Action Panel ─────────────────────────────── */}
+          <div className="p-4 border-b border-white/[0.06]">
           {/* Amount input */}
           <div className="relative mb-3">
             <input
@@ -299,90 +297,79 @@ export default function ProfileDrawer({ open, onClose }) {
 
           {activeTab === 'deposit' ? (
             payUrl ? (
-              /* ── Copy Payment Link UI ── */
-              <div className="flex flex-col gap-3 p-4 bg-white/5 rounded-xl border border-white/10">
-                {/* Header */}
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/70 text-center">
-                  Send exactly <span className="text-purple-400">{amount} SOL</span> to complete deposit
-                </p>
-
-                {/* House address display */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[9px] text-zinc-600 uppercase tracking-widest font-black">Recipient Address</span>
-                  <div className="flex items-center gap-2 bg-black/30 border border-white/10 rounded-lg px-3 py-2">
-                    <span className="text-[10px] text-zinc-300 font-mono flex-1 truncate">
-                      {HOUSE_WALLET.toBase58()}
-                    </span>
+              <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10 shadow-2xl">
+                <div className="space-y-3">
+                  <div className="p-3 bg-zinc-900/50 rounded-xl border border-white/5">
+                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1.5">Amount to Send</p>
+                    <p className="text-xl font-mono font-black text-emerald-400">{amount} SOL</p>
+                  </div>
+                  
+                  <div className="p-3 bg-zinc-900/50 rounded-xl border border-white/5">
+                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1.5">Recipient Address</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-mono font-bold text-white/80 truncate">{HOUSE_WALLET.toBase58()}</p>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(HOUSE_WALLET.toBase58());
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-3 h-3 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Copy Payment Link button */}
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(payUrl).then(() => {
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2500);
-                    }).catch(() => {
-                      // Fallback for older browsers
-                      const el = document.createElement('textarea');
-                      el.value = payUrl;
-                      document.body.appendChild(el);
-                      el.select();
-                      document.execCommand('copy');
-                      document.body.removeChild(el);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2500);
-                    });
-                  }}
-                  className={`w-full h-11 flex items-center justify-center gap-2 rounded-xl font-black text-[11px] uppercase tracking-widest transition-all active:scale-95 ${
-                    copied
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30'
-                      : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/30'
-                  }`}
-                >
-                  {copied ? (
-                    <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                      </svg>
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                      Copy Payment Link
-                    </>
-                  )}
-                </button>
-
-                {/* Instruction hint */}
-                <p className="text-[9px] text-zinc-600 text-center leading-relaxed">
-                  Paste the link in Phantom → <span className="text-zinc-400">Send → Scan or paste</span>
-                </p>
-
-                {/* Waiting indicator + Cancel */}
-                <div className="flex items-center justify-between pt-1">
-                  <div className="flex items-center gap-2 text-purple-400 text-[10px] font-black uppercase animate-pulse">
-                    <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    Awaiting payment...
-                  </div>
+                <div className="space-y-2">
                   <button
                     onClick={() => {
-                      setPayUrl('');
-                      setPayReference(null);
-                      setDepositStep('idle');
-                      setIsProcessing(false);
-                      setCopied(false);
+                      navigator.clipboard.writeText(payUrl);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
                     }}
-                    className="text-[10px] font-black uppercase tracking-widest text-zinc-600 hover:text-rose-400 transition-colors"
+                    className={`w-full h-11 flex items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${copied ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-purple-600 border-purple-500/50 text-white shadow-lg shadow-purple-900/20 hover:bg-purple-500'}`}
                   >
-                    Cancel
+                    {copied ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
+                        Link Copied!
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                        Copy Payment Link
+                      </>
+                    )}
                   </button>
+
+                  <div className="flex gap-2">
+                    <a
+                      href={payUrl}
+                      className="flex-[2] h-11 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-white/5"
+                    >
+                      Open Wallet
+                    </a>
+                    <button
+                      onClick={() => {
+                        setPayUrl('');
+                        setPayReference(null);
+                        setDepositStep('idle');
+                        setIsProcessing(false);
+                      }}
+                      className="flex-1 h-11 flex items-center justify-center bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-rose-500/20"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 text-purple-400 text-[9px] font-black uppercase tracking-widest animate-pulse mt-1">
+                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  Waiting for network verification...
                 </div>
               </div>
             ) : (
@@ -414,13 +401,12 @@ export default function ProfileDrawer({ open, onClose }) {
             </button>
           )}
 
-          {activeTab === 'deposit' && !payUrl && (
-            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">Powered by Solana Pay</p>
+          {activeTab === 'deposit' && (
+            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">One Phantom signature required</p>
           )}
         </div>
 
-        {/* ── Bet History ──────────────────────────────── */}
-        <div className="flex-1 min-h-0">
+          {/* ── Bet History ──────────────────────────────── */}
           <div className="px-5 py-3 border-b border-white/[0.06]">
             <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600">History</p>
           </div>
@@ -468,7 +454,6 @@ export default function ProfileDrawer({ open, onClose }) {
             </div>
           )}
         </div>
-        </div> {/* end scrollable body */}
 
         {/* ── Footer ──────────────────────────────────── */}
         <div className="p-4 border-t border-white/[0.06] flex-shrink-0">
