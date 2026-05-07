@@ -74,6 +74,9 @@ importers:
       three:
         specifier: ^0.183.2
         version: 0.183.2
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4
