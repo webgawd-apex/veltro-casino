@@ -141,25 +141,34 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     
     try {
       const parsedAmount = parseFloat(amount);
-      const reference = Keypair.generate();
+      const lamportsToTransfer = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
       
-      const instruction = SystemProgram.transfer({
+      // 1. Pre-flight Balance Check
+      const currentBalance = await connection.getBalance(adapterPublicKey);
+      // Rough estimation for transaction fee: 0.00001 SOL
+      const estimatedFee = 10000; 
+      
+      if (currentBalance < (lamportsToTransfer + estimatedFee)) {
+        throw new Error("Insufficient SOL in wallet to cover the deposit and network fees.");
+      }
+      
+      // 2. Clean Transfer Instruction (No fake reference keys)
+      const transferInstruction = SystemProgram.transfer({
         fromPubkey: adapterPublicKey,
         toPubkey: HOUSE_WALLET,
-        lamports: Math.floor(parsedAmount * LAMPORTS_PER_SOL),
+        lamports: lamportsToTransfer,
       });
       
-      // Add reference key for backend detection
-      instruction.keys.push({ pubkey: reference.publicKey, isSigner: false, isWritable: false });
+      // 3. Explicit Transaction Parameters for Simulator Safety
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const transaction = new Transaction({
+        feePayer: adapterPublicKey,
+        blockhash,
+        lastValidBlockHeight,
+      }).add(transferInstruction);
       
-      const transaction = new Transaction().add(instruction);
-      
-      // Tell backend to watch for this reference
-      socket.emit('watchSolanaPay', { 
-        wallet: walletStr, 
-        amount: parsedAmount, 
-        reference: reference.publicKey.toBase58() 
-      });
+      // Tell backend to watch for transfers from this wallet specifically
+      socket.emit('watchManualDeposit', { wallet: walletStr });
       
       // Request signature from wallet
       const signature = await sendTransaction(transaction, connection);
@@ -170,7 +179,12 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       console.error("[DEPOSIT ERROR]", err);
       setIsProcessing(false);
       setDepositStep('idle');
-      setStatusMsg({ type: 'error', text: err.message || 'Deposit failed.' });
+      
+      // Provide a clean error message to the user
+      let errMsg = err.message || 'Deposit failed.';
+      if (errMsg.includes('User rejected')) errMsg = 'Transaction cancelled.';
+      
+      setStatusMsg({ type: 'error', text: errMsg });
       setTimeout(() => setStatusMsg(null), 5000);
     }
   };
