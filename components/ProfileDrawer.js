@@ -368,12 +368,24 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
                     <svg className="animate-pulse w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    Scanning blockchain for exact amount...
+                    Scanning blockchain for trancaction...
                   </div>
 
-                  <p className="text-[8px] text-zinc-600 text-center leading-relaxed">
+                  <p className="text-[12px] text-zinc-600 text-center leading-relaxed">
                     Expires in ~15 mins.<br/>Only send from the wallet you connected with!
                   </p>
+                  
+                  <button
+                    onClick={() => {
+                      setExpectedDepositAmount(null);
+                      setDepositExpiresAt(null);
+                      setDepositStep('idle');
+                      setAmount('');
+                    }}
+                    className="w-full mt-2 py-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all border border-rose-500/20"
+                  >
+                    Cancel Deposit
+                  </button>
                 </div>
               )
           ) : (
