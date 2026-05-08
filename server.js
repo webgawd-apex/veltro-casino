@@ -117,6 +117,7 @@ app.prepare().then(async () => {
 
   // Store io globally so HTTP handlers can emit
   global.io = io;
+  global.activeDepositRequests = new Map();
 
   engineObj.setIO(io);
   global.coinflipEngine = new CoinflipEngine(io);
@@ -129,6 +130,25 @@ app.prepare().then(async () => {
     if (playersStore) socket.emit("playersUpdate", playersStore.getPlayers());
 
     // ── Account Events ──────────────────────────────────────────
+    
+    // Manual Fractional Deposit Request Generator
+    socket.on("requestDeposit", ({ wallet, baseAmount }) => {
+      if (!wallet || !baseAmount || baseAmount <= 0) return;
+      
+      // Generate a unique 6-decimal amount (e.g. 0.5 -> 0.501234)
+      const fractionalSuffix = (Math.floor(Math.random() * 9000) + 1000) / 1000000;
+      const expectedAmount = parseFloat((parseFloat(baseAmount) + fractionalSuffix).toFixed(6));
+      
+      // Store active request with 15 minute expiry
+      global.activeDepositRequests.set(wallet, {
+        expectedAmount,
+        status: 'pending',
+        expiresAt: Date.now() + 15 * 60000
+      });
+      
+      console.log(`[DEPOSIT REQUEST] ${wallet.slice(0, 6)} requested ${baseAmount} SOL -> Expected: ${expectedAmount} SOL`);
+      socket.emit("depositRequestCreated", { expectedAmount, expiresAt: Date.now() + 15 * 60000 });
+    });
 
     // Get or create casino account for wallet
     socket.on("getAccount", async (wallet) => {
@@ -253,25 +273,6 @@ app.prepare().then(async () => {
               const accountKeys = tx.transaction.message.accountKeys;
               const sender = accountKeys[0]?.pubkey?.toBase58?.() ?? accountKeys[0]?.toBase58?.();
 
-              // ── Primary match: sender address equals connected wallet ──
-              let matched = sender === wallet;
-
-              // ── Fallback: memo instruction contains Player ID ──
-              if (!matched) {
-                const instructions = tx.transaction.message.instructions;
-                for (const ix of instructions) {
-                  if (ix.programId?.toBase58?.() === 'MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr') {
-                    const memoData = ix.parsed || ix.data || '';
-                    if (typeof memoData === 'string' && memoData.toUpperCase().includes(playerId)) {
-                      matched = true;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              if (!matched) continue;
-
               // Calculate the actual SOL amount received by house wallet
               const houseIndex = accountKeys.findIndex(k =>
                 (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
@@ -286,12 +287,34 @@ app.prepare().then(async () => {
 
               const solAmount = lamports / 1e9;
 
+              // ── Match Strict Fractional Amount ──
+              let matched = false;
+              const activeReq = global.activeDepositRequests?.get(wallet);
+              
+              if (sender === wallet && activeReq) {
+                // Check if the received amount exactly matches the expected fractional amount
+                // Using a small epsilon for float comparison safety
+                if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
+                  // Check expiration
+                  if (Date.now() < activeReq.expiresAt) {
+                    matched = true;
+                  } else {
+                    console.warn(`[MANUAL DEPOSIT] Expired deposit received from ${wallet.slice(0, 6)}: ${solAmount} SOL`);
+                  }
+                }
+              }
+
+              if (!matched) continue;
+
               // Credit the account (creditBalance is idempotent by signature)
               cleanup();
               socket.emit('depositPending', { message: 'Transfer detected! Verifying...' });
 
               const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
               if (account) {
+                // Clear the active request to prevent reuse
+                global.activeDepositRequests.delete(wallet);
+                
                 await accountsModule.addBetHistory(wallet, {
                   game: 'Deposit',
                   multiplier: null,

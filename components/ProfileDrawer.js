@@ -38,6 +38,10 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
   const [copied, setCopied] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [copiedManual, setCopiedManual] = useState(null); // 'address' | 'playerid' | null
+  
+  // Manual Fractional Deposit States
+  const [expectedDepositAmount, setExpectedDepositAmount] = useState(null);
+  const [depositExpiresAt, setDepositExpiresAt] = useState(null);
 
   const walletStr = publicKey?.toBase58() ?? '';
   const playerId = walletStr.slice(0, 6).toUpperCase();
@@ -95,6 +99,12 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
+    const handleDepositRequestCreated = ({ expectedAmount, expiresAt }) => {
+      setExpectedDepositAmount(expectedAmount);
+      setDepositExpiresAt(expiresAt);
+      setDepositStep('verifying');
+      setIsProcessing(false);
+    };
     const handleWithdrawSuccess = ({ amount }) => {
       setStatusMsg({ type: 'success', text: `Withdrew ${amount} SOL to your wallet!` });
       setTimeout(() => setStatusMsg(null), 4000);
@@ -108,6 +118,7 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     socket.on('depositPending', handleDepositPending);
     socket.on('depositSuccess', handleDepositSuccess);
     socket.on('depositError', handleDepositError);
+    socket.on('depositRequestCreated', handleDepositRequestCreated);
     socket.on('withdrawSuccess', handleWithdrawSuccess);
     socket.on('withdrawError', handleWithdrawError);
 
@@ -116,6 +127,7 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       socket.off('depositPending', handleDepositPending);
       socket.off('depositSuccess', handleDepositSuccess);
       socket.off('depositError', handleDepositError);
+      socket.off('depositRequestCreated', handleDepositRequestCreated);
       socket.off('withdrawSuccess', handleWithdrawSuccess);
       socket.off('withdrawError', handleWithdrawError);
     };
@@ -128,8 +140,8 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     socket.emit('watchManualDeposit', { wallet: walletStr });
   }, [open, publicKey, walletStr, activeTab]);
 
-  const handleDeposit = async () => {
-    if (!adapterPublicKey || !sendTransaction) {
+  const initiateManualDeposit = () => {
+    if (!publicKey) {
       setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
       setTimeout(() => setStatusMsg(null), 5000);
       return;
@@ -137,54 +149,11 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     if (!amount || parseFloat(amount) <= 0) return;
     
     setIsProcessing(true);
-    setDepositStep('signing');
+    setDepositStep('signing'); // using 'signing' as loading state for the request
     
-    try {
-      const parsedAmount = parseFloat(amount);
-      const lamportsToTransfer = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
-      
-      // 1. Pre-flight Balance Check (Temporarily disabled for testing)
-      // const currentBalance = await connection.getBalance(adapterPublicKey);
-      // const estimatedFee = 10000; 
-      // if (currentBalance < (lamportsToTransfer + estimatedFee)) {
-      //   throw new Error("Insufficient SOL in wallet to cover the deposit and network fees.");
-      // }
-      
-      // 2. Clean Transfer Instruction (No fake reference keys)
-      const transferInstruction = SystemProgram.transfer({
-        fromPubkey: adapterPublicKey,
-        toPubkey: HOUSE_WALLET,
-        lamports: lamportsToTransfer,
-      });
-      
-      // 3. Explicit Transaction Parameters for Simulator Safety
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-      const transaction = new Transaction({
-        feePayer: adapterPublicKey,
-        blockhash,
-        lastValidBlockHeight,
-      }).add(transferInstruction);
-      
-      // Tell backend to watch for transfers from this wallet specifically
-      socket.emit('watchManualDeposit', { wallet: walletStr });
-      
-      // Request signature from wallet
-      const signature = await sendTransaction(transaction, connection);
-      console.log('Deposit signature:', signature);
-      
-      setDepositStep('verifying');
-    } catch (err) {
-      console.error("[DEPOSIT ERROR]", err);
-      setIsProcessing(false);
-      setDepositStep('idle');
-      
-      // Provide a clean error message to the user
-      let errMsg = err.message || 'Deposit failed.';
-      if (errMsg.includes('User rejected')) errMsg = 'Transaction cancelled.';
-      
-      setStatusMsg({ type: 'error', text: errMsg });
-      setTimeout(() => setStatusMsg(null), 5000);
-    }
+    // Request a unique fractional amount from the backend
+    socket.emit('requestDeposit', { wallet: walletStr, baseAmount: parseFloat(amount) });
+    socket.emit('watchManualDeposit', { wallet: walletStr });
   };
 
   const handleWithdraw = async () => {
@@ -328,18 +297,85 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
           )}
 
           {activeTab === 'deposit' ? (
-              <button
-                onClick={handleDeposit}
-                disabled={isProcessing || !amount || parseFloat(amount) <= 0}
-                className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20"
-              >
-                {isProcessing ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    {depositStep === 'signing' ? 'Awaiting Signature...' : depositStep === 'verifying' ? 'Verifying...' : 'Processing...'}
-                  </span>
-                ) : 'Deposit to Casino'}
-              </button>
+              !expectedDepositAmount ? (
+                <>
+                  <button
+                    onClick={initiateManualDeposit}
+                    disabled={isProcessing || !amount || parseFloat(amount) <= 0}
+                    className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20"
+                  >
+                    {isProcessing ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                        Generating...
+                      </span>
+                    ) : 'Generate Deposit Request'}
+                  </button>
+                  <p className="text-zinc-500 text-[9px] text-center mt-3 uppercase tracking-widest leading-relaxed">
+                    No wallet connection required.<br/>Deposit natively from Phantom or Solflare.
+                  </p>
+                </>
+              ) : (
+                <div className="bg-white/[0.02] rounded-xl border border-white/[0.06] p-4 space-y-4">
+                  <div className="text-center">
+                    <p className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.2em] mb-1">Send Exactly</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="text-2xl font-black text-purple-400 font-mono tracking-tight">{expectedDepositAmount} SOL</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(expectedDepositAmount.toString());
+                          setCopiedManual('amount');
+                          setTimeout(() => setCopiedManual(null), 2000);
+                        }}
+                        className={`px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                          copiedManual === 'amount'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-white/5 text-zinc-500 hover:text-white border border-white/5'
+                        }`}
+                      >
+                        {copiedManual === 'amount' ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-zinc-900/60 rounded-xl border border-white/5 text-center">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=solana:${HOUSE_WALLET.toBase58()}?amount=${expectedDepositAmount}&bgcolor=18181b&color=a855f7`} 
+                      alt="Deposit QR"
+                      className="w-32 h-32 mx-auto rounded-lg mb-3 shadow-lg shadow-purple-900/20"
+                    />
+                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1.5">To Address</p>
+                    <div className="flex items-center justify-between gap-2 bg-black/40 p-2 rounded-lg border border-white/[0.04]">
+                      <p className="text-[9px] font-mono text-white/70 truncate">{HOUSE_WALLET.toBase58()}</p>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(HOUSE_WALLET.toBase58());
+                          setCopiedManual('address');
+                          setTimeout(() => setCopiedManual(null), 2000);
+                        }}
+                        className={`flex-shrink-0 px-2 py-1 rounded-md text-[8px] font-black uppercase tracking-widest transition-all ${
+                          copiedManual === 'address'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-white/5 text-zinc-500 hover:text-white border border-white/5'
+                        }`}
+                      >
+                        {copiedManual === 'address' ? '✓' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 text-[10px] text-amber-500/80 font-bold bg-amber-500/10 py-2 rounded-lg border border-amber-500/20">
+                    <svg className="animate-pulse w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Scanning blockchain for exact amount...
+                  </div>
+
+                  <p className="text-[8px] text-zinc-600 text-center leading-relaxed">
+                    Expires in ~15 mins.<br/>Only send from the wallet you connected with!
+                  </p>
+                </div>
+              )
           ) : (
             <button
               onClick={handleWithdraw}
@@ -353,87 +389,6 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
                 </span>
               ) : 'Withdraw to Wallet'}
             </button>
-          )}
-
-          {activeTab === 'deposit' && (
-            <>
-              <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">One Phantom signature required</p>
-
-              {/* Manual Transfer Section */}
-              <div className="mt-3">
-                <button
-                  onClick={() => setManualOpen(p => !p)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-zinc-600 hover:text-zinc-400 hover:bg-white/5 border border-white/[0.04] transition-all"
-                >
-                  <span>Manual Transfer (Advanced)</span>
-                  <svg className={`w-3 h-3 transition-transform ${manualOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {manualOpen && (
-                  <div className="mt-2 p-4 bg-white/[0.02] rounded-xl border border-white/[0.06] space-y-3">
-                    <p className="text-[9px] text-zinc-500 leading-relaxed">
-                      Send SOL directly to this address from your wallet. Your deposit will be detected automatically within ~15 seconds.
-                    </p>
-
-                    {/* House wallet address */}
-                    <div className="p-3 bg-zinc-900/60 rounded-xl border border-white/5">
-                      <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest mb-1.5">Send SOL To</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[9px] font-mono text-white/70 truncate">{HOUSE_WALLET.toBase58()}</p>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(HOUSE_WALLET.toBase58());
-                            setCopiedManual('address');
-                            setTimeout(() => setCopiedManual(null), 2000);
-                          }}
-                          className={`flex-shrink-0 px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${
-                            copiedManual === 'address'
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-white/5 text-zinc-500 hover:text-white border border-white/5'
-                          }`}
-                        >
-                          {copiedManual === 'address' ? '✓ Copied' : 'Copy'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Player ID memo */}
-                    <div className="p-3 bg-zinc-900/60 rounded-xl border border-white/5">
-                      <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest mb-1.5">Your Player ID (Add as Memo)</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-mono font-black text-purple-400">{playerId}</p>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(playerId);
-                            setCopiedManual('playerid');
-                            setTimeout(() => setCopiedManual(null), 2000);
-                          }}
-                          className={`flex-shrink-0 px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all ${
-                            copiedManual === 'playerid'
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-white/5 text-zinc-500 hover:text-white border border-white/5'
-                          }`}
-                        >
-                          {copiedManual === 'playerid' ? '✓ Copied' : 'Copy'}
-                        </button>
-                      </div>
-                      <p className="text-[8px] text-zinc-700 mt-1.5 leading-relaxed">
-                        Adding your Player ID as a memo guarantees instant detection even if your wallet address changes.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-amber-500/70 text-[8px] font-bold">
-                      <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      Only send from the wallet you connected with. Transfers from other wallets cannot be credited.
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
           )}
         </div>
 
