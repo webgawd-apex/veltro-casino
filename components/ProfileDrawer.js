@@ -90,12 +90,16 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     const handleDepositSuccess = ({ amount }) => {
       setDepositStep('idle');
       setIsProcessing(false);
+      setExpectedDepositAmount(null);
+      setDepositExpiresAt(null);
       setStatusMsg({ type: 'success', text: `${amount} SOL deposited successfully!` });
       setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
       setDepositStep('idle');
       setIsProcessing(false);
+      setExpectedDepositAmount(null);
+      setDepositExpiresAt(null);
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
