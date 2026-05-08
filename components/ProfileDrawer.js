@@ -128,31 +128,31 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     socket.emit('watchManualDeposit', { wallet: walletStr });
   }, [open, publicKey, walletStr, activeTab]);
 
-  // Reset Solana Pay state when successful
-  useEffect(() => {
-    if (depositStep === 'idle') {
-      setPayUrl('');
-      setPayReference(null);
+  const handleDeposit = async () => {
+    if (!adapterPublicKey || !sendTransaction) {
+      setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
+      setTimeout(() => setStatusMsg(null), 5000);
+      return;
     }
-  }, [depositStep]);
-
-  const handleGeneratePayRequest = async () => {
-    if (!publicKey || !amount || parseFloat(amount) <= 0) return;
+    if (!amount || parseFloat(amount) <= 0) return;
+    
     setIsProcessing(true);
+    setDepositStep('signing');
+    
     try {
       const parsedAmount = parseFloat(amount);
       const reference = Keypair.generate();
       
-      const url = encodeURL({
-        recipient: HOUSE_WALLET,
-        amount: new BigNumber(parsedAmount),
-        reference: reference.publicKey,
-        label: 'Veltro Casino',
-        message: 'Deposit to Veltro Casino',
+      const instruction = SystemProgram.transfer({
+        fromPubkey: adapterPublicKey,
+        toPubkey: HOUSE_WALLET,
+        lamports: Math.floor(parsedAmount * LAMPORTS_PER_SOL),
       });
-
-      setPayUrl(url.toString());
-      setPayReference(reference.publicKey.toBase58());
+      
+      // Add reference key for backend detection
+      instruction.keys.push({ pubkey: reference.publicKey, isSigner: false, isWritable: false });
+      
+      const transaction = new Transaction().add(instruction);
       
       // Tell backend to watch for this reference
       socket.emit('watchSolanaPay', { 
@@ -161,12 +161,16 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
         reference: reference.publicKey.toBase58() 
       });
       
+      // Request signature from wallet
+      const signature = await sendTransaction(transaction, connection);
+      console.log('Deposit signature:', signature);
+      
       setDepositStep('verifying');
     } catch (err) {
-      console.error("[SOLANA PAY ERROR]", err);
+      console.error("[DEPOSIT ERROR]", err);
       setIsProcessing(false);
       setDepositStep('idle');
-      setStatusMsg({ type: 'error', text: 'Failed to generate payment request.' });
+      setStatusMsg({ type: 'error', text: err.message || 'Deposit failed.' });
       setTimeout(() => setStatusMsg(null), 5000);
     }
   };
@@ -312,127 +316,18 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
           )}
 
           {activeTab === 'deposit' ? (
-            payUrl ? (
-              <div className="flex flex-col gap-4 p-5 bg-white/5 rounded-2xl border border-white/10 shadow-2xl">
-                <div className="space-y-3">
-                  <div className="p-3 bg-zinc-900/50 rounded-xl border border-white/5">
-                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1.5">Amount to Send</p>
-                    <p className="text-xl font-mono font-black text-emerald-400">{amount} SOL</p>
-                  </div>
-                  
-                  <div className="p-3 bg-zinc-900/50 rounded-xl border border-white/5">
-                    <p className="text-[9px] text-zinc-500 font-black uppercase tracking-widest mb-1.5">Recipient Address</p>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-mono font-bold text-white/80 truncate">{HOUSE_WALLET.toBase58()}</p>
-                      <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText(HOUSE_WALLET.toBase58());
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 2000);
-                        }}
-                        className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
-                      >
-                        <svg className="w-3 h-3 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(payUrl);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className={`w-full h-11 flex items-center justify-center gap-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${copied ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-purple-600 border-purple-500/50 text-white shadow-lg shadow-purple-900/20 hover:bg-purple-500'}`}
-                  >
-                    {copied ? (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
-                        Link Copied!
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-                        Copy Payment Link
-                      </>
-                    )}
-                  </button>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        if (!payUrl) return;
-                        // ───────────────────────────────────────────────
-                        // We must NOT navigate directly to the solana: URL.
-                        // Doing so can cause the OS to open Phantom's in-app
-                        // browser — a separate session from Chrome/Safari.
-                        //
-                        // Instead we use Phantom's native URI scheme:
-                        //   phantom://ul/v1/browse?url=<encoded solana: URL>
-                        // This tells the OS to open the Phantom APP directly.
-                        // Phantom signs the transaction inside the app, sends
-                        // it to the network, then returns control to the
-                        // system browser (Chrome/Safari) — keeping it as HQ.
-                        // ───────────────────────────────────────────────
-                        const isAndroid = /Android/i.test(navigator.userAgent);
-                        const encodedPayUrl = encodeURIComponent(payUrl);
-                        const encodedOrigin = encodeURIComponent(window.location.href);
-
-                        let deepLink;
-                        if (isAndroid) {
-                          // Android: intent:// scheme — opens Phantom natively
-                          deepLink =
-                            `intent://ul/v1/browse?url=${encodedPayUrl}&ref=${encodedOrigin}` +
-                            `#Intent;scheme=phantom;package=app.phantom;` +
-                            `S.browser_fallback_url=https%3A%2F%2Fplay.google.com%2Fstore%2Fapps%2Fdetails%3Fid%3Dapp.phantom;end`;
-                        } else {
-                          // iOS: phantom:// URI scheme — opens Phantom APP
-                          deepLink = `phantom://ul/v1/browse?url=${encodedPayUrl}&ref=${encodedOrigin}`;
-                        }
-
-                        window.location.href = deepLink;
-                      }}
-                      className="flex-[2] h-11 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-white/5"
-                    >
-                      Open Wallet
-                    </button>
-                    <button
-                      onClick={() => {
-                        setPayUrl('');
-                        setPayReference(null);
-                        setDepositStep('idle');
-                        setIsProcessing(false);
-                      }}
-                      className="flex-1 h-11 flex items-center justify-center bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-rose-500/20"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-center gap-2 text-purple-400 text-[9px] font-black uppercase tracking-widest animate-pulse mt-1">
-                  <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                  Waiting for network verification...
-                </div>
-              </div>
-            ) : (
               <button
-                onClick={handleGeneratePayRequest}
+                onClick={handleDeposit}
                 disabled={isProcessing || !amount || parseFloat(amount) <= 0}
                 className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20"
               >
                 {isProcessing ? (
                   <span className="flex items-center justify-center gap-2">
                     <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                    Generating...
+                    {depositStep === 'signing' ? 'Awaiting Signature...' : depositStep === 'verifying' ? 'Verifying...' : 'Processing...'}
                   </span>
                 ) : 'Deposit to Casino'}
               </button>
-            )
           ) : (
             <button
               onClick={handleWithdraw}
