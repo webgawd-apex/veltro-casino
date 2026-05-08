@@ -115,9 +115,94 @@ app.prepare().then(async () => {
     cors: { origin: "*" },
   });
 
-  // Store io globally so HTTP handlers can emit
+  // Global registries for deposit management
   global.io = io;
   global.activeDepositRequests = new Map();
+  global.processedSignatures = new Set();
+
+  // ── Global Background Deposit Scanner ──
+  const startGlobalDepositScanner = () => {
+    console.log(`[SCANNER] Starting global background deposit scanner for ${HOUSE_WALLET.slice(0, 6)}...`);
+    
+    const scan = async () => {
+      try {
+        const recipientPubkey = new PublicKey(HOUSE_WALLET);
+        const sigs = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 50 });
+
+        for (const sigInfo of sigs) {
+          if (global.processedSignatures.has(sigInfo.signature)) continue;
+
+          try {
+            const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
+              commitment: 'confirmed',
+              maxSupportedTransactionVersion: 0,
+            });
+
+            if (!tx || !tx.meta) continue;
+
+            const accountKeys = tx.transaction.message.accountKeys;
+            const preBalances = tx.meta.preBalances;
+            const postBalances = tx.meta.postBalances;
+
+            const houseIndex = accountKeys.findIndex(k =>
+              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
+            );
+            if (houseIndex === -1) {
+              global.processedSignatures.add(sigInfo.signature);
+              continue;
+            }
+
+            const lamports = postBalances[houseIndex] - preBalances[houseIndex];
+            if (lamports <= 0) {
+              global.processedSignatures.add(sigInfo.signature);
+              continue;
+            }
+
+            const solAmount = lamports / 1e9;
+            let matched = false;
+
+            for (const [wallet, activeReq] of global.activeDepositRequests.entries()) {
+              const isUserInvolved = accountKeys.some(k => 
+                (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
+              );
+
+              if (isUserInvolved) {
+                if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
+                  if (Date.now() < activeReq.expiresAt) {
+                    console.log(`[SCANNER ✅] Match found! ${wallet.slice(0, 6)} deposited ${solAmount} SOL`);
+                    
+                    const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
+                    if (account) {
+                      global.activeDepositRequests.delete(wallet);
+                      await accountsModule.addBetHistory(wallet, {
+                        game: 'Deposit',
+                        multiplier: null,
+                        profit: solAmount,
+                        amount: solAmount,
+                      });
+                      
+                      global.io.emit('accountUpdate', account);
+                      global.io.emit('depositSuccess', { wallet, amount: solAmount });
+                    }
+                    matched = true;
+                    break;
+                  }
+                }
+              }
+            }
+            global.processedSignatures.add(sigInfo.signature);
+          } catch (txErr) {
+            console.warn(`[SCANNER] Error parsing tx ${sigInfo.signature.slice(0, 8)}:`, txErr.message);
+          }
+        }
+      } catch (err) {
+        console.warn('[SCANNER] Loop error:', err.message);
+      }
+    };
+    setInterval(scan, 5000);
+  };
+
+  startGlobalDepositScanner();
 
   engineObj.setIO(io);
   global.coinflipEngine = new CoinflipEngine(io);
@@ -225,136 +310,6 @@ app.prepare().then(async () => {
           socket.emit("depositError", { message: "Payment verification failed. Please contact support." });
         }
       };
-    });
-
-    // Manual Transfer: watch house wallet for any SOL arriving FROM the user's wallet.
-    // Also parses memo instructions as a fallback (Player ID match).
-    socket.on('watchManualDeposit', async ({ wallet }) => {
-      if (!wallet) return;
-
-      const playerId = wallet.slice(0, 6).toUpperCase();
-      const recipientPubkey = new PublicKey(HOUSE_WALLET);
-      const senderPubkey = new PublicKey(wallet);
-
-      console.log(`[MANUAL DEPOSIT] Watching for transfers from ${wallet.slice(0, 6)} to house wallet`);
-
-      // Track which signatures we've already processed
-      const seenSignatures = new Set();
-
-      // We no longer pre-fill seenSignatures with the last 20 signatures.
-      // Doing so caused a major bug where if a user's mobile browser disconnected
-      // while they were making the transfer in Phantom, the reconnecting websocket
-      // would instantly mark their confirmed transfer as "already seen" and ignore it.
-
-      let interval;
-      let timeout;
-
-      const cleanup = () => {
-        if (interval) clearInterval(interval);
-        if (timeout) clearTimeout(timeout);
-      };
-
-      const checkTransfer = async () => {
-        try {
-          const sigs = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 20 });
-
-          for (const sigInfo of sigs) {
-            if (seenSignatures.has(sigInfo.signature)) continue;
-            seenSignatures.add(sigInfo.signature);
-
-            // HARDCORE FIX: Only parse transactions that happened AFTER the deposit request was created.
-            // This prevents us from spamming RPC with getParsedTransaction for old history,
-            // while safely catching transactions that arrived while the user's websocket was disconnected.
-            const activeReq = global.activeDepositRequests?.get(wallet);
-            if (activeReq && sigInfo.blockTime && sigInfo.blockTime < (activeReq.createdAt - 60)) {
-              continue; // Skip transactions that are definitively older than the request
-            }
-
-            try {
-              const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
-                commitment: 'confirmed',
-                maxSupportedTransactionVersion: 0,
-              });
-
-              if (!tx || !tx.meta) continue;
-
-              const accountKeys = tx.transaction.message.accountKeys;
-              // Check if the user's wallet is ANYWHERE in the transaction (handles complex DEX routes)
-              const isUserInvolved = accountKeys.some(k => 
-                (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
-              );
-
-              // Calculate the actual SOL amount received by house wallet
-              const houseIndex = accountKeys.findIndex(k =>
-                (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
-              );
-              if (houseIndex === -1) continue;
-
-              const preBal  = tx.meta.preBalances[houseIndex]  ?? 0;
-              const postBal = tx.meta.postBalances[houseIndex] ?? 0;
-              const lamports = postBal - preBal;
-
-              if (lamports <= 0) continue; // house wallet didn't gain — skip
-
-              const solAmount = lamports / 1e9;
-
-              // ── Match Strict Fractional Amount ──
-              let matched = false;
-              
-              if (isUserInvolved && activeReq) {
-                // Check if the received amount exactly matches the expected fractional amount
-                // Using a small epsilon for float comparison safety
-                if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
-                  // Check expiration
-                  if (Date.now() < activeReq.expiresAt) {
-                    matched = true;
-                  } else {
-                    console.warn(`[MANUAL DEPOSIT] Expired deposit received from ${wallet.slice(0, 6)}: ${solAmount} SOL`);
-                  }
-                }
-              }
-
-              if (!matched) continue;
-
-              // Credit the account (creditBalance is idempotent by signature)
-              cleanup();
-              socket.emit('depositPending', { message: 'Transfer detected! Verifying...' });
-
-              const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
-              if (account) {
-                // Clear the active request to prevent reuse
-                global.activeDepositRequests.delete(wallet);
-                
-                await accountsModule.addBetHistory(wallet, {
-                  game: 'Deposit',
-                  multiplier: null,
-                  profit: solAmount,
-                  amount: solAmount,
-                });
-                socket.emit('accountUpdate', account);
-                socket.emit('depositSuccess', { amount: solAmount });
-                console.log(`[MANUAL DEPOSIT ✅] ${wallet.slice(0, 6)} deposited ${solAmount} SOL. Sig: ${sigInfo.signature}`);
-              }
-              return; // done for this session
-            } catch (txErr) {
-              console.warn('[MANUAL DEPOSIT] Error parsing tx:', txErr.message);
-            }
-          }
-        } catch (pollErr) {
-          console.warn('[MANUAL DEPOSIT] Poll error:', pollErr.message);
-        }
-      };
-
-      interval = setInterval(checkTransfer, 5000);
-
-      // Stop watching after 10 minutes
-      timeout = setTimeout(() => {
-        cleanup();
-        console.log(`[MANUAL DEPOSIT] Watch expired for ${wallet.slice(0, 6)}`);
-      }, 600000);
-
-      // Clean up if socket disconnects mid-watch
-      socket.on('disconnect', cleanup);
     });
 
     // Withdrawal: debit casino balance then send on-chain SOL

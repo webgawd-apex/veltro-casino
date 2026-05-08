@@ -87,7 +87,8 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     const handleDepositPending = () => {
       setDepositStep('verifying');
     };
-    const handleDepositSuccess = ({ amount }) => {
+    const handleDepositSuccess = ({ wallet: successWallet, amount }) => {
+      if (successWallet && successWallet !== walletStr) return;
       setDepositStep('idle');
       setIsProcessing(false);
       setExpectedDepositAmount(null);
@@ -126,6 +127,11 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     socket.on('withdrawSuccess', handleWithdrawSuccess);
     socket.on('withdrawError', handleWithdrawError);
 
+    // Silent check on mount/reconnect: if we have an active deposit UI, check if it was already credited
+    if (expectedDepositAmount) {
+      socket.emit('getAccount', walletStr);
+    }
+
     return () => {
       socket.off('accountUpdate', handleAccountUpdate);
       socket.off('depositPending', handleDepositPending);
@@ -135,14 +141,8 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       socket.off('withdrawSuccess', handleWithdrawSuccess);
       socket.off('withdrawError', handleWithdrawError);
     };
-  }, [open, publicKey, walletStr]);
+  }, [open, publicKey, walletStr, expectedDepositAmount]);
 
-  // Watch for manual transfers whenever deposit tab is open
-  useEffect(() => {
-    if (!open || !publicKey || activeTab !== 'deposit') return;
-    // Tell backend to watch for any SOL arriving to house wallet FROM this wallet
-    socket.emit('watchManualDeposit', { wallet: walletStr });
-  }, [open, publicKey, walletStr, activeTab]);
 
   const initiateManualDeposit = () => {
     if (!publicKey) {
@@ -157,7 +157,6 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     
     // Request a unique fractional amount from the backend
     socket.emit('requestDeposit', { wallet: walletStr, baseAmount: parseFloat(amount) });
-    socket.emit('watchManualDeposit', { wallet: walletStr });
   };
 
   const handleWithdraw = async () => {
