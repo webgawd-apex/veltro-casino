@@ -135,14 +135,15 @@ app.prepare().then(async () => {
     socket.on("requestDeposit", ({ wallet, baseAmount }) => {
       if (!wallet || !baseAmount || baseAmount <= 0) return;
       
-      // Generate a unique 6-decimal amount (e.g. 0.5 -> 0.501234)
-      const fractionalSuffix = (Math.floor(Math.random() * 9000) + 1000) / 1000000;
+      // Generate a tiny unique 6-decimal amount (e.g. 0.5 -> 0.500234)
+      const fractionalSuffix = (Math.floor(Math.random() * 900) + 100) / 1000000;
       const expectedAmount = parseFloat((parseFloat(baseAmount) + fractionalSuffix).toFixed(6));
       
-      // Store active request with 15 minute expiry
+      // Store active request with 15 minute expiry and creation time
       global.activeDepositRequests.set(wallet, {
         expectedAmount,
         status: 'pending',
+        createdAt: Math.floor(Date.now() / 1000), // Unix timestamp in seconds
         expiresAt: Date.now() + 15 * 60000
       });
       
@@ -237,14 +238,13 @@ app.prepare().then(async () => {
 
       console.log(`[MANUAL DEPOSIT] Watching for transfers from ${wallet.slice(0, 6)} to house wallet`);
 
-      // Track which signatures we've already processed for this session
+      // Track which signatures we've already processed
       const seenSignatures = new Set();
 
-      // Seed with current signatures so we only catch NEW ones
-      try {
-        const existing = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 20 });
-        existing.forEach(s => seenSignatures.add(s.signature));
-      } catch (_) { /* non-fatal */ }
+      // We no longer pre-fill seenSignatures with the last 20 signatures.
+      // Doing so caused a major bug where if a user's mobile browser disconnected
+      // while they were making the transfer in Phantom, the reconnecting websocket
+      // would instantly mark their confirmed transfer as "already seen" and ignore it.
 
       let interval;
       let timeout;
@@ -262,6 +262,14 @@ app.prepare().then(async () => {
             if (seenSignatures.has(sigInfo.signature)) continue;
             seenSignatures.add(sigInfo.signature);
 
+            // HARDCORE FIX: Only parse transactions that happened AFTER the deposit request was created.
+            // This prevents us from spamming RPC with getParsedTransaction for old history,
+            // while safely catching transactions that arrived while the user's websocket was disconnected.
+            const activeReq = global.activeDepositRequests?.get(wallet);
+            if (activeReq && sigInfo.blockTime && sigInfo.blockTime < (activeReq.createdAt - 60)) {
+              continue; // Skip transactions that are definitively older than the request
+            }
+
             try {
               const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
                 commitment: 'confirmed',
@@ -271,7 +279,10 @@ app.prepare().then(async () => {
               if (!tx || !tx.meta) continue;
 
               const accountKeys = tx.transaction.message.accountKeys;
-              const sender = accountKeys[0]?.pubkey?.toBase58?.() ?? accountKeys[0]?.toBase58?.();
+              // Check if the user's wallet is ANYWHERE in the transaction (handles complex DEX routes)
+              const isUserInvolved = accountKeys.some(k => 
+                (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
+              );
 
               // Calculate the actual SOL amount received by house wallet
               const houseIndex = accountKeys.findIndex(k =>
@@ -289,9 +300,8 @@ app.prepare().then(async () => {
 
               // ── Match Strict Fractional Amount ──
               let matched = false;
-              const activeReq = global.activeDepositRequests?.get(wallet);
               
-              if (sender === wallet && activeReq) {
+              if (isUserInvolved && activeReq) {
                 // Check if the received amount exactly matches the expected fractional amount
                 // Using a small epsilon for float comparison safety
                 if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
