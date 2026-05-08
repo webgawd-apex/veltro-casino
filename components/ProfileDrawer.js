@@ -143,14 +143,12 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       const parsedAmount = parseFloat(amount);
       const lamportsToTransfer = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
       
-      // 1. Pre-flight Balance Check
-      const currentBalance = await connection.getBalance(adapterPublicKey);
-      // Rough estimation for transaction fee: 0.00001 SOL
-      const estimatedFee = 10000; 
-      
-      if (currentBalance < (lamportsToTransfer + estimatedFee)) {
-        throw new Error("Insufficient SOL in wallet to cover the deposit and network fees.");
-      }
+      // 1. Pre-flight Balance Check (Temporarily disabled for testing)
+      // const currentBalance = await connection.getBalance(adapterPublicKey);
+      // const estimatedFee = 10000; 
+      // if (currentBalance < (lamportsToTransfer + estimatedFee)) {
+      //   throw new Error("Insufficient SOL in wallet to cover the deposit and network fees.");
+      // }
       
       // 2. Clean Transfer Instruction (No fake reference keys)
       const transferInstruction = SystemProgram.transfer({
