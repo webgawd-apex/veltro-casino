@@ -236,6 +236,99 @@ app.prepare().then(async () => {
       socket.emit("depositRequestCreated", { expectedAmount, expiresAt: Date.now() + 15 * 60000 });
     });
 
+    // Manual Verification: Triggered by the "Verify Deposit" button or signature input
+    socket.on("verifyDeposit", async ({ wallet, signature }) => {
+      if (!wallet) return;
+      
+      console.log(`[MANUAL VERIFY] User ${wallet.slice(0, 6)} requested manual verification. Sig: ${signature || 'None'}`);
+      
+      const activeReq = global.activeDepositRequests.get(wallet);
+      if (!activeReq) {
+        return socket.emit("depositError", { message: "No active deposit request found. Please generate one first." });
+      }
+
+      try {
+        const recipientPubkey = new PublicKey(HOUSE_WALLET);
+        let targetSigs = [];
+
+        if (signature) {
+          // If user provided a signature, verify it directly
+          targetSigs = [{ signature }];
+        } else {
+          // Otherwise, fetch recent signatures for house wallet and search for a match
+          socket.emit("depositPending", { message: "Searching blockchain for your transaction..." });
+          targetSigs = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 50 });
+        }
+
+        let foundMatch = false;
+
+        for (const sigInfo of targetSigs) {
+          try {
+            const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
+              commitment: 'confirmed',
+              maxSupportedTransactionVersion: 0,
+            });
+
+            if (!tx || !tx.meta) continue;
+
+            const accountKeys = tx.transaction.message.accountKeys;
+            const preBalances = tx.meta.preBalances;
+            const postBalances = tx.meta.postBalances;
+
+            // Check if user's wallet is involved
+            const isUserInvolved = accountKeys.some(k => 
+              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
+            );
+            if (!isUserInvolved) continue;
+
+            // Find house wallet index
+            const houseIndex = accountKeys.findIndex(k =>
+              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
+            );
+            if (houseIndex === -1) continue;
+
+            const lamports = postBalances[houseIndex] - preBalances[houseIndex];
+            const solAmount = lamports / 1e9;
+
+            // Strict amount match
+            if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
+              console.log(`[MANUAL VERIFY ✅] Match found for ${wallet.slice(0, 6)}: ${solAmount} SOL`);
+              
+              const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
+              if (account) {
+                global.activeDepositRequests.delete(wallet);
+                await accountsModule.addBetHistory(wallet, {
+                  game: 'Deposit',
+                  multiplier: null,
+                  profit: solAmount,
+                  amount: solAmount,
+                });
+                
+                socket.emit('accountUpdate', account);
+                socket.emit('depositSuccess', { wallet, amount: solAmount });
+                foundMatch = true;
+                break;
+              }
+            }
+          } catch (err) {
+            console.warn(`[MANUAL VERIFY] Error parsing tx ${sigInfo.signature}:`, err.message);
+          }
+        }
+
+        if (!foundMatch) {
+          socket.emit("depositError", { 
+            message: signature 
+              ? "This transaction ID is invalid or doesn't match the expected amount." 
+              : "No matching transaction found yet. Please wait a minute and try again." 
+          });
+        }
+
+      } catch (err) {
+        console.error("[MANUAL VERIFY ERROR]", err);
+        socket.emit("depositError", { message: "Blockchain verification failed. Please try again later." });
+      }
+    });
+
     // Get or create casino account for wallet
     socket.on("getAccount", async (wallet) => {
       if (!wallet) return;
