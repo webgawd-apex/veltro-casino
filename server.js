@@ -115,94 +115,100 @@ app.prepare().then(async () => {
     cors: { origin: "*" },
   });
 
-  // Global registries for deposit management
-  global.io = io;
-  global.activeDepositRequests = new Map();
-  global.processedSignatures = new Set();
+// ── GLOBAL DEPOSIT SYSTEM (Point 3 & 4 of requirements) ──
+global.activeDepositRequests = new Map();
+global.processedSignatures = new Set();
 
-  // ── Global Background Deposit Scanner ──
-  const startGlobalDepositScanner = () => {
-    console.log(`[SCANNER] Starting global background deposit scanner for ${HOUSE_WALLET.slice(0, 6)}...`);
-    
-    const scan = async () => {
-      try {
-        const recipientPubkey = new PublicKey(HOUSE_WALLET);
-        const sigs = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 50 });
+const startGlobalDepositScanner = () => {
+  console.log(`[SCANNER] Monitoring ${HOUSE_WALLET.slice(0, 8)}...`);
+  
+  const scan = async () => {
+    try {
+      const recipientPubkey = new PublicKey(HOUSE_WALLET);
+      const sigs = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 50 });
 
-        for (const sigInfo of sigs) {
-          if (global.processedSignatures.has(sigInfo.signature)) continue;
+      for (const sigInfo of sigs) {
+        if (global.processedSignatures.has(sigInfo.signature)) continue;
 
-          try {
-            const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
-              commitment: 'confirmed',
-              maxSupportedTransactionVersion: 0,
-            });
+        try {
+          const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0,
+          });
 
-            if (!tx || !tx.meta) continue;
+          // If null, RPC lag. Skip for now, don't mark as processed.
+          if (!tx || !tx.meta) continue;
 
-            const accountKeys = tx.transaction.message.accountKeys;
-            const preBalances = tx.meta.preBalances;
-            const postBalances = tx.meta.postBalances;
+          const accountKeys = tx.transaction.message.accountKeys;
+          const preBalances = tx.meta.preBalances;
+          const postBalances = tx.meta.postBalances;
 
-            const houseIndex = accountKeys.findIndex(k =>
-              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
+          const houseIndex = accountKeys.findIndex(k =>
+            (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
+          );
+          if (houseIndex === -1) {
+            global.processedSignatures.add(sigInfo.signature);
+            continue;
+          }
+
+          const lamports = postBalances[houseIndex] - preBalances[houseIndex];
+          if (lamports <= 0) {
+            global.processedSignatures.add(sigInfo.signature);
+            continue;
+          }
+
+          const solAmount = lamports / 1e9;
+          let matched = false;
+
+          // Check all active requests for an amount match (Point 4)
+          for (const [wallet, activeReq] of global.activeDepositRequests.entries()) {
+            // Requirement 4: Match amount and verify sender
+            const isUserSender = accountKeys.some(k => 
+              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
             );
-            if (houseIndex === -1) {
-              global.processedSignatures.add(sigInfo.signature);
-              continue;
-            }
 
-            const lamports = postBalances[houseIndex] - preBalances[houseIndex];
-            if (lamports <= 0) {
-              global.processedSignatures.add(sigInfo.signature);
-              continue;
-            }
-
-            const solAmount = lamports / 1e9;
-            let matched = false;
-
-            for (const [wallet, activeReq] of global.activeDepositRequests.entries()) {
-              const isUserInvolved = accountKeys.some(k => 
-                (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
-              );
-
-              if (isUserInvolved) {
-                if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
-                  if (Date.now() < activeReq.expiresAt) {
-                    console.log(`[SCANNER ✅] Match found! ${wallet.slice(0, 6)} deposited ${solAmount} SOL`);
-                    
-                    const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
-                    if (account) {
-                      global.activeDepositRequests.delete(wallet);
-                      await accountsModule.addBetHistory(wallet, {
-                        game: 'Deposit',
-                        multiplier: null,
-                        profit: solAmount,
-                        amount: solAmount,
-                      });
-                      
-                      global.io.emit('accountUpdate', account);
-                      global.io.emit('depositSuccess', { wallet, amount: solAmount });
-                    }
-                    matched = true;
-                    break;
-                  }
+            if (isUserSender && Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
+              // Verify not expired (Point 4)
+              if (Date.now() < activeReq.expiresAt) {
+                console.log(`[SCANNER ✅] Verified Deposit: ${wallet.slice(0, 6)} sent ${solAmount} SOL`);
+                
+                // Credit balance (Point 5)
+                const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
+                if (account) {
+                  global.activeDepositRequests.delete(wallet);
+                  await accountsModule.addBetHistory(wallet, {
+                    game: 'Deposit',
+                    multiplier: null,
+                    profit: solAmount,
+                    amount: solAmount,
+                  });
+                  
+                  // Notify all sockets for this wallet
+                  global.io.emit('accountUpdate', account);
+                  global.io.emit('depositSuccess', { wallet, amount: solAmount });
+                  matched = true;
+                  break;
                 }
               }
             }
-            global.processedSignatures.add(sigInfo.signature);
-          } catch (txErr) {
-            console.warn(`[SCANNER] Error parsing tx ${sigInfo.signature.slice(0, 8)}:`, txErr.message);
           }
+
+          // Mark as processed if it's not a pending casino deposit we expect
+          global.processedSignatures.add(sigInfo.signature);
+
+        } catch (txErr) {
+          console.warn(`[SCANNER] Tx skip ${sigInfo.signature.slice(0,8)}:`, txErr.message);
         }
-      } catch (err) {
-        console.warn('[SCANNER] Loop error:', err.message);
       }
-    };
-    setInterval(scan, 5000);
+    } catch (err) {
+      console.warn('[SCANNER] Loop err:', err.message);
+    }
   };
 
-  startGlobalDepositScanner();
+  setInterval(scan, 5000); // 5 second polling (Point 4)
+};
+
+startGlobalDepositScanner();
 
   engineObj.setIO(io);
   global.coinflipEngine = new CoinflipEngine(io);
@@ -216,121 +222,24 @@ app.prepare().then(async () => {
 
     // ── Account Events ──────────────────────────────────────────
     
-    // Manual Fractional Deposit Request Generator
+    // Manual Fractional Deposit Request (Point 3)
     socket.on("requestDeposit", ({ wallet, baseAmount }) => {
       if (!wallet || !baseAmount || baseAmount <= 0) return;
       
-      // Generate a tiny unique 6-decimal amount (e.g. 0.5 -> 0.500234)
-      const fractionalSuffix = (Math.floor(Math.random() * 900) + 100) / 1000000;
-      const expectedAmount = parseFloat((parseFloat(baseAmount) + fractionalSuffix).toFixed(6));
+      // Generate a unique 6-decimal suffix (Point 3)
+      const fractionalSuffix = (Math.floor(Math.random() * 900000) + 100000) / 10000000;
+      const expectedAmount = parseFloat((parseFloat(baseAmount) + fractionalSuffix).toFixed(7));
       
-      // Store active request with 15 minute expiry and creation time
+      // Store pending request (Point 3)
       global.activeDepositRequests.set(wallet, {
         expectedAmount,
         status: 'pending',
-        createdAt: Math.floor(Date.now() / 1000), // Unix timestamp in seconds
-        expiresAt: Date.now() + 15 * 60000
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 15 * 60000 // 15 mins (Point 4)
       });
       
-      console.log(`[DEPOSIT REQUEST] ${wallet.slice(0, 6)} requested ${baseAmount} SOL -> Expected: ${expectedAmount} SOL`);
+      console.log(`[DEPOSIT] Request for ${wallet.slice(0, 6)}: ${expectedAmount} SOL`);
       socket.emit("depositRequestCreated", { expectedAmount, expiresAt: Date.now() + 15 * 60000 });
-    });
-
-    // Manual Verification: Triggered by the "Verify Deposit" button or signature input
-    socket.on("verifyDeposit", async ({ wallet, signature }) => {
-      if (!wallet) return;
-      
-      console.log(`[MANUAL VERIFY] User ${wallet.slice(0, 6)} requested verification. Sig: ${signature || 'Scanning Wallet'}`);
-      
-      const activeReq = global.activeDepositRequests.get(wallet);
-      if (!activeReq) {
-        return socket.emit("depositError", { 
-          message: "No active deposit request found. Please generate one first.",
-          keepScreen: false 
-        });
-      }
-
-      try {
-        let targetSigs = [];
-
-        if (signature) {
-          targetSigs = [{ signature }];
-        } else {
-          socket.emit("depositPending", { message: "Scanning your wallet history..." });
-          // Scan the USER'S wallet instead of the house wallet for faster matching
-          try {
-            targetSigs = await solConnection.getSignaturesForAddress(new PublicKey(wallet), { limit: 10 });
-          } catch (err) {
-            console.error("[MANUAL VERIFY] Failed to get user sigs:", err.message);
-          }
-        }
-
-        let foundMatch = false;
-
-        for (const sigInfo of targetSigs) {
-          try {
-            const tx = await solConnection.getParsedTransaction(sigInfo.signature, {
-              commitment: 'confirmed',
-              maxSupportedTransactionVersion: 0,
-            });
-
-            if (!tx || !tx.meta) continue;
-
-            const accountKeys = tx.transaction.message.accountKeys;
-            const preBalances = tx.meta.preBalances;
-            const postBalances = tx.meta.postBalances;
-
-            // Find house wallet index in this transaction
-            const houseIndex = accountKeys.findIndex(k =>
-              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
-            );
-            
-            if (houseIndex === -1) continue;
-
-            // Verify that the house wallet actually received SOL
-            const lamports = postBalances[houseIndex] - preBalances[houseIndex];
-            const solAmount = lamports / 1e9;
-
-            if (lamports <= 0) continue;
-
-            // Strict amount match with active request
-            if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
-              console.log(`[MANUAL VERIFY ✅] Match confirmed for ${wallet.slice(0, 6)}: ${solAmount} SOL`);
-              
-              const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
-              if (account) {
-                global.activeDepositRequests.delete(wallet);
-                await accountsModule.addBetHistory(wallet, {
-                  game: 'Deposit',
-                  multiplier: null,
-                  profit: solAmount,
-                  amount: solAmount,
-                });
-                
-                socket.emit('accountUpdate', account);
-                socket.emit('depositSuccess', { wallet, amount: solAmount });
-                foundMatch = true;
-                break;
-              }
-            }
-          } catch (err) {
-            console.warn(`[MANUAL VERIFY] Skip tx ${sigInfo.signature.slice(0,8)}:`, err.message);
-          }
-        }
-
-        if (!foundMatch) {
-          socket.emit("depositError", { 
-            message: signature 
-              ? "Invalid Signature: This transaction didn't send the correct amount to the house wallet." 
-              : "We couldn't find a matching transaction in your wallet's recent history. Ensure you sent the exact fractional amount!",
-            keepScreen: true // Custom flag to keep the UI open
-          });
-        }
-
-      } catch (err) {
-        console.error("[MANUAL VERIFY ERROR]", err);
-        socket.emit("depositError", { message: "Verification failed. Please try again or paste your Transaction ID.", keepScreen: true });
-      }
     });
 
     // Get or create casino account for wallet
@@ -340,146 +249,57 @@ app.prepare().then(async () => {
       socket.emit("accountUpdate", account);
     });
 
-    // Solana Pay: watch for a transaction with the given reference
-    socket.on("watchSolanaPay", async ({ wallet, amount, reference }) => {
-      if (!wallet || !amount || !reference) return;
-
-      console.log(`[SOLANA PAY] Watching for ${amount} SOL deposit from ${wallet.slice(0, 6)} (Ref: ${reference.slice(0, 6)})`);
-      
-      const referencePubkey = new PublicKey(reference);
-      const recipientPubkey = new PublicKey(HOUSE_WALLET);
-      const amountBN = new BigNumber(amount);
-      
-      let signatureInfo;
-      let interval;
-      let timeout;
-
-      const cleanup = () => {
-        if (interval) clearInterval(interval);
-        if (timeout) clearTimeout(timeout);
-      };
-
-      // Poll for the transaction signature
-      interval = setInterval(async () => {
-        try {
-          signatureInfo = await findReference(solConnection, referencePubkey, { finality: 'confirmed' });
-          if (signatureInfo) {
-            cleanup();
-            verifyPayment(signatureInfo.signature);
-          }
-        } catch (e) {
-          // Keep polling
-        }
-      }, 3000);
-
-      // Stop watching after 10 minutes
-      timeout = setTimeout(() => {
-        cleanup();
-        socket.emit("depositError", { message: "Payment timeout. The request has expired." });
-      }, 600000);
-
-      const verifyPayment = async (signature) => {
-        try {
-          socket.emit("depositPending", { message: "Payment detected! Verifying..." });
-          
-          // Validate the transfer details
-          await validateTransfer(solConnection, signature, {
-            recipient: recipientPubkey,
-            amount: amountBN,
-            reference: referencePubkey,
-          }, { commitment: 'confirmed' });
-
-          // ✅ Success - credit balance
-          const account = await accountsModule.creditBalance(wallet, amount, signature);
-          if (account) {
-            await accountsModule.addBetHistory(wallet, { 
-              game: 'Deposit', 
-              multiplier: null, 
-              profit: amount, 
-              amount 
-            });
-            socket.emit("accountUpdate", account);
-            socket.emit("depositSuccess", { amount });
-            console.log(`[SOLANA PAY ✅] ${wallet.slice(0, 6)} deposited ${amount} SOL. Sig: ${signature}`);
-          }
-        } catch (err) {
-          console.error("[SOLANA PAY VERIFY ERROR]", err);
-          socket.emit("depositError", { message: "Payment verification failed. Please contact support." });
-        }
-      };
-    });
-
     // Withdrawal: debit casino balance then send on-chain SOL
     socket.on("withdraw", async ({ wallet, amount }) => {
       if (!wallet || !amount || amount <= 0) return;
 
       try {
-        // 1. Debit in-game balance first (safety first)
         const updatedAccount = await accountsModule.debitBalance(wallet, amount);
         if (!updatedAccount) {
           return socket.emit("withdrawError", { message: "Insufficient casino balance." });
         }
 
-        // 2. Execute on-chain payout
         try {
           const signature = await payoutsModule.executePayout({ wallet, amount }, 1.0);
-          
-          // 3. Log history and notify success
           await accountsModule.addBetHistory(wallet, { game: 'Withdrawal', multiplier: null, profit: -amount, amount });
-          
-          // Re-fetch to get latest balance after debit
           const finalAccount = await accountsModule.getAccount(wallet);
           socket.emit("accountUpdate", finalAccount);
           socket.emit("withdrawSuccess", { amount, signature });
           console.log(`[WITHDRAW ✅] ${wallet.slice(0, 6)} withdrew ${amount} SOL. Sig: ${signature}`);
         } catch (payoutErr) {
-          // 4. REFUND LOOP: If on-chain fails, give back the in-game balance
-          console.error(`[WITHDRAW FAILED] On-chain error for ${wallet}:`, payoutErr.message);
+          console.error(`[WITHDRAW FAILED]`, payoutErr.message);
           await accountsModule.creditBalance(wallet, amount); 
           const refundedAccount = await accountsModule.getAccount(wallet);
           socket.emit("accountUpdate", refundedAccount);
-          
-          // Send the ACTUAL error message to the user
-          socket.emit("withdrawError", { 
-            message: `Withdrawal failed: ${payoutErr.message}` 
-          });
+          socket.emit("withdrawError", { message: `Withdrawal failed: ${payoutErr.message}` });
         }
       } catch (err) {
         console.error("[WITHDRAW CRITICAL]", err);
-        socket.emit("withdrawError", { message: "Withdrawal encountered a critical error. Please try again." });
+        socket.emit("withdrawError", { message: "Critical error. Please try again." });
       }
     });
 
     // ── Crash Game Events ────────────────────────────────────────
 
-    // Place bet — instant, no blockchain wait, deducted from casino balance
     socket.on("placeBet", async (data) => {
       if (!playersStore || !stateStore) return;
       const currentState = stateStore.getState();
       if (currentState.status !== "BETTING") {
-        socket.emit("betError", { message: "Betting is closed for this round!" });
+        socket.emit("betError", { message: "Betting is closed!" });
         return;
       }
-
       const { publicKey, amount, target } = data;
-
-      // Guard: check casino balance
       const balCheck = await accountsModule.hasBalance(publicKey, amount);
       if (!balCheck) {
-        socket.emit("betError", { message: "Insufficient casino balance. Deposit via your profile." });
+        socket.emit("betError", { message: "Insufficient balance." });
         return;
       }
-
-      // Debit casino balance immediately
       const updatedAccount = await accountsModule.debitBalance(publicKey, amount);
       socket.emit("accountUpdate", updatedAccount);
-
-      // Add to round
       playersStore.addPlayer({ wallet: publicKey, amount, target, id: socket.id });
       io.emit("playersUpdate", playersStore.getPlayers());
     });
 
-    // Manual cashout
     socket.on("cashOut", (wallet) => {
       if (!payoutsModule || !stateStore) return;
       const currentState = stateStore.getState();

@@ -30,17 +30,10 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
   const [activeTab, setActiveTab] = useState('deposit');
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [depositStep, setDepositStep] = useState('idle'); // 'idle' | 'signing' | 'verifying'
+  const [depositStep, setDepositStep] = useState('idle'); // 'idle' | 'verifying'
   const [account, setAccount] = useState(null);
   const [statusMsg, setStatusMsg] = useState(null); // { type: 'success'|'error', text }
-  const [payUrl, setPayUrl] = useState('');
-  const [payReference, setPayReference] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const [manualOpen, setManualOpen] = useState(false);
   const [copiedManual, setCopiedManual] = useState(null);
-  const [manualSignature, setManualSignature] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [showSigInput, setShowSigInput] = useState(false); // 'address' | 'playerid' | null
   
   // Manual Fractional Deposit States
   const [expectedDepositAmount, setExpectedDepositAmount] = useState(null);
@@ -94,21 +87,14 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       if (successWallet && successWallet !== walletStr) return;
       setDepositStep('idle');
       setIsProcessing(false);
-      setIsVerifying(false);
       setExpectedDepositAmount(null);
       setDepositExpiresAt(null);
-      setManualSignature('');
       setStatusMsg({ type: 'success', text: `${amount} SOL deposited successfully!` });
       setTimeout(() => setStatusMsg(null), 5000);
     };
-    const handleDepositError = ({ message, keepScreen }) => {
+    const handleDepositError = ({ message }) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setIsVerifying(false);
-      if (keepScreen === false) {
-        setExpectedDepositAmount(null);
-        setDepositExpiresAt(null);
-      }
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
@@ -159,19 +145,8 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       return;
     }
     if (!amount || parseFloat(amount) <= 0) return;
-    
     setIsProcessing(true);
-    setDepositStep('signing'); // using 'signing' as loading state for the request
-    
-    // Request a unique fractional amount from the backend
     socket.emit('requestDeposit', { wallet: walletStr, baseAmount: parseFloat(amount) });
-  };
-
-  const handleVerifyDeposit = () => {
-    setIsVerifying(true);
-    socket.emit('verifyDeposit', { wallet: walletStr, signature: manualSignature.trim() || null });
-    // Reset verifying state after a few seconds if no response
-    setTimeout(() => setIsVerifying(false), 10000);
   };
 
   const handleWithdraw = async () => {
@@ -386,40 +361,16 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
                     <svg className="animate-pulse w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    Scanning blockchain...
+                    Waiting for payment detection...
                   </div>
 
-                  <div className="space-y-2 pt-2">
-                    <button
-                      onClick={handleVerifyDeposit}
-                      disabled={isVerifying}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-emerald-900/20 disabled:opacity-50"
-                    >
-                      {isVerifying ? 'Verifying...' : "I've Sent the SOL"}
-                    </button>
+                  <p className="text-[10px] text-zinc-500 text-center leading-relaxed italic">
+                    Transfer natively from your Phantom/Solflare app.<br/>
+                    The system will automatically detect and credit your balance.
+                  </p>
 
-                    {!showSigInput ? (
-                      <button 
-                        onClick={() => setShowSigInput(true)}
-                        className="w-full py-2 text-[8px] text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-widest"
-                      >
-                        Trouble? Enter Transaction ID manually
-                      </button>
-                    ) : (
-                      <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
-                        <input
-                          type="text"
-                          value={manualSignature}
-                          onChange={(e) => setManualSignature(e.target.value)}
-                          placeholder="Paste Transaction Signature / ID"
-                          className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-white font-mono placeholder:text-zinc-700 focus:outline-none focus:border-purple-500/50 transition-all"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <p className="text-[10px] text-zinc-600 text-center leading-relaxed">
-                    Expires in ~15 mins.<br/>Only send from the wallet you connected with!
+                  <p className="text-[10px] text-rose-400/80 text-center leading-relaxed font-bold uppercase tracking-widest bg-rose-500/5 py-2 rounded-lg border border-rose-500/10">
+                    DO NOT CLOSE THIS TAB UNTIL CONFIRMED
                   </p>
                   
                   <button
