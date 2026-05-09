@@ -78,15 +78,18 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     socket.emit('getAccount', walletStr);
 
     const handleAccountUpdate = (data) => {
-      if (data?.wallet === walletStr) setAccount(data);
+      if (data?.wallet?.trim() === walletStr?.trim()) {
+        setAccount(data);
+      }
     };
     const handleDepositPending = () => {
       setDepositStep('verifying');
     };
-    const handleDepositSuccess = ({ amount }) => {
+    const handleDepositSuccess = (data) => {
       setDepositStep('idle');
       setIsProcessing(false);
-      setStatusMsg({ type: 'success', text: `${amount} SOL deposited successfully!` });
+      setStatusMsg({ type: 'success', text: `✅ ${data.amount} SOL deposited successfully!` });
+      if (data.account) setAccount(data.account);
       setTimeout(() => setStatusMsg(null), 5000);
     };
     const handleDepositError = ({ message }) => {
@@ -95,8 +98,9 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       setStatusMsg({ type: 'error', text: message });
       setTimeout(() => setStatusMsg(null), 10000);
     };
-    const handleWithdrawSuccess = ({ amount }) => {
-      setStatusMsg({ type: 'success', text: `Withdrew ${amount} SOL to your wallet!` });
+    const handleWithdrawSuccess = (data) => {
+      setStatusMsg({ type: 'success', text: `Withdrew ${data.amount} SOL to your wallet!` });
+      if (data.account) setAccount(data.account);
       setTimeout(() => setStatusMsg(null), 4000);
     };
     const handleWithdrawError = ({ message }) => {
@@ -121,12 +125,7 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     };
   }, [open, publicKey, walletStr]);
 
-  // Watch for manual transfers whenever deposit tab is open
-  useEffect(() => {
-    if (!open || !publicKey || activeTab !== 'deposit') return;
-    // Tell backend to watch for any SOL arriving to house wallet FROM this wallet
-    socket.emit('watchManualDeposit', { wallet: walletStr });
-  }, [open, publicKey, walletStr, activeTab]);
+
 
   const handleDeposit = async () => {
     if (!adapterPublicKey || !sendTransaction) {
@@ -141,50 +140,46 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
     
     try {
       const parsedAmount = parseFloat(amount);
-      const lamportsToTransfer = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
-      
-      // 1. Pre-flight Balance Check (Temporarily disabled for testing)
-      // const currentBalance = await connection.getBalance(adapterPublicKey);
-      // const estimatedFee = 10000; 
-      // if (currentBalance < (lamportsToTransfer + estimatedFee)) {
-      //   throw new Error("Insufficient SOL in wallet to cover the deposit and network fees.");
-      // }
-      
-      // 2. Clean Transfer Instruction (No fake reference keys)
-      const transferInstruction = SystemProgram.transfer({
-        fromPubkey: adapterPublicKey,
-        toPubkey: HOUSE_WALLET,
-        lamports: lamportsToTransfer,
-      });
-      
-      // 3. Explicit Transaction Parameters for Simulator Safety
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
+
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+
       const transaction = new Transaction({
         feePayer: adapterPublicKey,
-        blockhash,
-        lastValidBlockHeight,
-      }).add(transferInstruction);
-      
-      // Tell backend to watch for transfers from this wallet specifically
-      socket.emit('watchManualDeposit', { wallet: walletStr });
-      
-      // Request signature from wallet
-      const signature = await sendTransaction(transaction, connection);
-      console.log('Deposit signature:', signature);
-      
-      setDepositStep('verifying');
+        recentBlockhash: blockhash,
+      }).add(
+        SystemProgram.transfer({
+          fromPubkey: adapterPublicKey,
+          toPubkey: HOUSE_WALLET,
+          lamports,
+        })
+      );
+
+      const signature = await sendTransaction(transaction, connection, {
+        preflightCommitment: 'confirmed',
+        maxRetries: 3
+      });
+
+      socket.emit('deposit', { wallet: walletStr, signature, amount: parsedAmount });
+      setAmount('');
     } catch (err) {
-      console.error("[DEPOSIT ERROR]", err);
-      setIsProcessing(false);
       setDepositStep('idle');
+      setIsProcessing(false);
       
-      // Provide a clean error message to the user
-      let errMsg = err.message || 'Deposit failed.';
-      if (errMsg.includes('User rejected')) errMsg = 'Transaction cancelled.';
+      let errorText = err.message || 'Deposit failed or was rejected.';
+      if (errorText.includes('Unexpected error')) {
+        errorText = "Wallet Error: Please ensure you have enough SOL for gas.";
+      }
       
-      setStatusMsg({ type: 'error', text: errMsg });
-      setTimeout(() => setStatusMsg(null), 5000);
+      setStatusMsg({ type: 'error', text: errorText });
+      setTimeout(() => setStatusMsg(null), 8000);
     }
+  };
+
+  // No longer needed with signature-based flow, but kept as a simple refresh
+  const handleManualCheck = () => {
+    setStatusMsg({ type: 'success', text: 'Waiting for blockchain confirmation...' });
+    setTimeout(() => setStatusMsg(null), 3000);
   };
 
   const handleWithdraw = async () => {
@@ -316,80 +311,35 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
               {activeTab === 'withdraw' ? 'Available' : 'Deposit amount'}
             </span>
             <span className="text-[10px] text-zinc-400 font-mono font-bold">
-                        {activeTab === 'deposit' ? (
-            <div className="space-y-4">
-              <div className="p-5 bg-white/5 rounded-2xl border border-white/10 shadow-2xl space-y-4">
-                <div className="space-y-3">
-                  <p className="text-[10px] text-zinc-400 leading-relaxed font-medium">
-                    To deposit, send SOL from your wallet to the address below. Your balance will update automatically within ~15 seconds.
-                  </p>
-                  
-                  {/* House wallet address */}
-                  <div className="p-3 bg-zinc-900/60 rounded-xl border border-white/5">
-                    <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest mb-1.5">Recipient Address (Copy this)</p>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-mono text-white/70 truncate">{HOUSE_WALLET.toBase58()}</p>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(HOUSE_WALLET.toBase58());
-                          setCopiedManual('address');
-                          setTimeout(() => setCopiedManual(null), 2000);
-                        }}
-                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                          copiedManual === 'address'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-purple-600 text-white shadow-lg shadow-purple-900/20'
-                        }`}
-                      >
-                        {copiedManual === 'address' ? '✓ Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
+              {account ? account.balance.toFixed(4) : '0.0000'} SOL
+            </span>
+          </div>
 
-                  {/* Player ID memo */}
-                  <div className="p-3 bg-zinc-900/60 rounded-xl border border-white/5">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest">Player ID (Add as Memo)</p>
-                      <span className="text-[8px] px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded-md font-bold uppercase tracking-tighter">Recommended</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-mono font-black text-purple-400">{playerId}</p>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(playerId);
-                          setCopiedManual('playerid');
-                          setTimeout(() => setCopiedManual(null), 2000);
-                        }}
-                        className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                          copiedManual === 'playerid'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-purple-600 text-white shadow-lg shadow-purple-900/20'
-                        }`}
-                      >
-                        {copiedManual === 'playerid' ? '✓ Copied' : 'Copy'}
-                      </button>
-                    </div>
-                    <p className="text-[8px] text-zinc-700 mt-2 leading-relaxed">
-                      Including your Player ID as a **Memo** ensures your deposit is credited instantly even if you use a different wallet.
-                    </p>
-                  </div>
-                </div>
+          {/* Insufficient warning */}
+          {isInsufficient && (
+            <p className="text-rose-400 text-[9px] font-black uppercase tracking-widest text-center mb-3">
+              ⚠ Insufficient casino balance
+            </p>
+          )}
 
-                <div className="flex items-center justify-center gap-2.5 py-2 px-3 bg-emerald-500/5 rounded-xl border border-emerald-500/10 text-emerald-400/80 text-[10px] font-black uppercase tracking-widest animate-pulse">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></div>
-                  Watching for your deposit...
-                </div>
-              </div>
-              
-              <div className="px-1 space-y-2">
-                <p className="text-zinc-600 text-[9px] uppercase tracking-widest font-bold">Important:</p>
-                <ul className="text-[8px] text-zinc-700 space-y-1 list-disc pl-3">
-                  <li>Only send SOL (Solana) to this address.</li>
-                  <li>Minimum deposit is 0.01 SOL.</li>
-                  <li>Do not send directly from an Exchange (Binance/Coinbase) without a memo.</li>
-                </ul>
-              </div>
-            </div>
+          {activeTab === 'deposit' ? (
+            <button
+              onClick={handleDeposit}
+              disabled={isProcessing || !amount || parseFloat(amount) <= 0}
+              className="w-full h-12 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none shadow-lg shadow-purple-900/20"
+            >
+              {depositStep === 'signing' ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  Waiting for signature...
+                </span>
+              ) : depositStep === 'verifying' ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                  Verifying...
+                </span>
+              ) : 'Deposit to Casino'}
+            </button>
           ) : (
             <button
               onClick={handleWithdraw}
@@ -404,6 +354,11 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
               ) : 'Withdraw to Wallet'}
             </button>
           )}
+
+          {activeTab === 'deposit' && (
+            <p className="text-zinc-700 text-[9px] text-center mt-2 uppercase tracking-widest">One Phantom signature required</p>
+          )}
+
         </div>
 
           {/* ── Bet History ──────────────────────────────── */}
