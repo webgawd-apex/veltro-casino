@@ -268,9 +268,9 @@ app.prepare().then(async () => {
           const refundedAccount = await accountsModule.getAccount(wallet);
           socket.emit("accountUpdate", refundedAccount);
           
-          // Send the ACTUAL error message to the user
+          // Send a generic error message to the user for security/UX
           socket.emit("withdrawError", { 
-            message: `Withdrawal failed: ${payoutErr.message}` 
+            message: "Withdrawal endpoint error. Please try again later" 
           });
         }
       } catch (err) {
