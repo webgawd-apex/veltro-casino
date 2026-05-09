@@ -240,24 +240,29 @@ app.prepare().then(async () => {
     socket.on("verifyDeposit", async ({ wallet, signature }) => {
       if (!wallet) return;
       
-      console.log(`[MANUAL VERIFY] User ${wallet.slice(0, 6)} requested manual verification. Sig: ${signature || 'None'}`);
+      console.log(`[MANUAL VERIFY] User ${wallet.slice(0, 6)} requested verification. Sig: ${signature || 'Scanning Wallet'}`);
       
       const activeReq = global.activeDepositRequests.get(wallet);
       if (!activeReq) {
-        return socket.emit("depositError", { message: "No active deposit request found. Please generate one first." });
+        return socket.emit("depositError", { 
+          message: "No active deposit request found. Please generate one first.",
+          keepScreen: false 
+        });
       }
 
       try {
-        const recipientPubkey = new PublicKey(HOUSE_WALLET);
         let targetSigs = [];
 
         if (signature) {
-          // If user provided a signature, verify it directly
           targetSigs = [{ signature }];
         } else {
-          // Otherwise, fetch recent signatures for house wallet and search for a match
-          socket.emit("depositPending", { message: "Searching blockchain for your transaction..." });
-          targetSigs = await solConnection.getSignaturesForAddress(recipientPubkey, { limit: 50 });
+          socket.emit("depositPending", { message: "Scanning your wallet history..." });
+          // Scan the USER'S wallet instead of the house wallet for faster matching
+          try {
+            targetSigs = await solConnection.getSignaturesForAddress(new PublicKey(wallet), { limit: 10 });
+          } catch (err) {
+            console.error("[MANUAL VERIFY] Failed to get user sigs:", err.message);
+          }
         }
 
         let foundMatch = false;
@@ -275,24 +280,22 @@ app.prepare().then(async () => {
             const preBalances = tx.meta.preBalances;
             const postBalances = tx.meta.postBalances;
 
-            // Check if user's wallet is involved
-            const isUserInvolved = accountKeys.some(k => 
-              (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === wallet
-            );
-            if (!isUserInvolved) continue;
-
-            // Find house wallet index
+            // Find house wallet index in this transaction
             const houseIndex = accountKeys.findIndex(k =>
               (k.pubkey?.toBase58?.() ?? k.toBase58?.()) === HOUSE_WALLET
             );
+            
             if (houseIndex === -1) continue;
 
+            // Verify that the house wallet actually received SOL
             const lamports = postBalances[houseIndex] - preBalances[houseIndex];
             const solAmount = lamports / 1e9;
 
-            // Strict amount match
+            if (lamports <= 0) continue;
+
+            // Strict amount match with active request
             if (Math.abs(solAmount - activeReq.expectedAmount) < 0.000001) {
-              console.log(`[MANUAL VERIFY ✅] Match found for ${wallet.slice(0, 6)}: ${solAmount} SOL`);
+              console.log(`[MANUAL VERIFY ✅] Match confirmed for ${wallet.slice(0, 6)}: ${solAmount} SOL`);
               
               const account = await accountsModule.creditBalance(wallet, solAmount, sigInfo.signature);
               if (account) {
@@ -311,21 +314,22 @@ app.prepare().then(async () => {
               }
             }
           } catch (err) {
-            console.warn(`[MANUAL VERIFY] Error parsing tx ${sigInfo.signature}:`, err.message);
+            console.warn(`[MANUAL VERIFY] Skip tx ${sigInfo.signature.slice(0,8)}:`, err.message);
           }
         }
 
         if (!foundMatch) {
           socket.emit("depositError", { 
             message: signature 
-              ? "This transaction ID is invalid or doesn't match the expected amount." 
-              : "No matching transaction found yet. Please wait a minute and try again." 
+              ? "Invalid Signature: This transaction didn't send the correct amount to the house wallet." 
+              : "We couldn't find a matching transaction in your wallet's recent history. Ensure you sent the exact fractional amount!",
+            keepScreen: true // Custom flag to keep the UI open
           });
         }
 
       } catch (err) {
         console.error("[MANUAL VERIFY ERROR]", err);
-        socket.emit("depositError", { message: "Blockchain verification failed. Please try again later." });
+        socket.emit("depositError", { message: "Verification failed. Please try again or paste your Transaction ID.", keepScreen: true });
       }
     });
 
