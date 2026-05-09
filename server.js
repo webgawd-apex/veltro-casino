@@ -20,7 +20,7 @@ import { initDB } from "./lib/db.js";
 const cors = corsLib({ origin: "*" });
 
 const dev = process.env.NODE_ENV !== "production";
-const hostname = "localhost";
+const hostname = "0.0.0.0"; // Binding to 0.0.0.0 is required for Render/Production
 const port = process.env.PORT || 10000;
 
 const HOUSE_WALLET = process.env.HOUSE_WALLET_ADDRESS || "Hox2okUrbq1jDXhthvCTX6hua9jZE79Mt72smevhJuGY";
@@ -317,8 +317,8 @@ app.prepare().then(async () => {
     });
   });
 
-  httpServer.listen(port, (err) => {
-    if (err) throw err;
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`> Ready: All ES modules loaded and game engines started.`);
     console.log(`> Ready on http://${hostname}:${port}`);
   });
 });
