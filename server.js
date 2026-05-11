@@ -68,8 +68,10 @@ app.prepare().then(async () => {
             // Debit before flip
             await accountsModule.debitBalance(wallet, amount);
 
-            // Rig result (house edge)
-            let result = Math.random() < 0.97 ? (choice === 'HEADS' ? 'TAILS' : 'HEADS') : choice;
+            // Rig result (70/30 house edge, only for bets >= 0.01 SOL)
+            let result = (amount >= 0.01 && Math.random() < 0.70) 
+              ? (choice === 'HEADS' ? 'TAILS' : 'HEADS') 
+              : choice;
             
             let status = 'busted';
             let profit = 0;
