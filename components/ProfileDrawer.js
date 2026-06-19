@@ -256,7 +256,6 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
             </span>
             <span className="text-emerald-400 font-black text-sm mb-1">SOL</span>
           </div>
-          <p className="text-[10px] text-zinc-700 uppercase tracking-widest font-mono">≈ ${usdEst} USD</p>
         </div>
 
           {statusMsg && (
