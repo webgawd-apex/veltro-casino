@@ -147,93 +147,71 @@ app.prepare().then(async () => {
       socket.emit("depositPending", { message: "Verifying on-chain..." });
 
       try {
-        let confirmedData = null;
+        // Pre-delay to allow nodes to index
+        await new Promise(r => setTimeout(r, 3000));
         
-        // 1. Wait for confirmation
-        console.log(`[DEPOSIT] ⏳ Waiting for blockchain confirmation...`);
-        for (let i = 0; i < 30; i++) {
-          const statusRes = await solConnection.getSignatureStatus(signature, { searchTransactionHistory: true });
-          const status = statusRes?.value;
-          
-          if (status?.err) {
-            console.error(`[DEPOSIT ❌] Transaction failed on-chain:`, status.err);
-            throw new Error("Transaction failed on-chain.");
-          }
-          
-          if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') {
-            console.log(`[DEPOSIT ✅] Transaction confirmed! Status: ${status.confirmationStatus}`);
-            confirmedData = status;
-            break;
-          }
-          
-          if (i % 5 === 0 && i > 0) console.log(`[DEPOSIT] Still waiting (${i*1.5}s elapsed)...`);
-          await new Promise(r => setTimeout(r, 1500));
+        let tx = null;
+        let attempts = 0;
+        while (attempts < 5) {
+          tx = await solConnection.getTransaction(signature, { 
+            maxSupportedTransactionVersion: 0,
+            commitment: 'confirmed' 
+          });
+          if (tx) break;
+          attempts++;
+          await new Promise(r => setTimeout(r, 2000));
         }
 
-        if (!confirmedData) {
-          console.error(`[DEPOSIT ❌] Verification timeout for ${signature}`);
-          return socket.emit("depositError", { message: "Verification timeout. If debited, contact support with your signature." });
+        if (!tx) throw new Error("Transaction not found on chain after multiple attempts.");
+        if (tx.meta?.err) throw new Error("Transaction failed on chain.");
+
+        // Resolve account keys — works for BOTH legacy (message.accountKeys)
+        // and versioned/v0 (message.staticAccountKeys) transactions.
+        // Phantom defaults to v0, so both paths must be handled.
+        const msg = tx.transaction.message;
+        const rawKeys = msg.accountKeys ?? msg.staticAccountKeys ?? [];
+        const accountKeys = rawKeys.map(k => (typeof k === 'string' ? k : k.toBase58()));
+
+        // Find house wallet by scanning balance changes
+        const houseIndex = accountKeys.findIndex(k => k === HOUSE_WALLET);
+        if (houseIndex === -1) throw new Error("House wallet not found in transaction.");
+
+        const receivedLamports = tx.meta.postBalances[houseIndex] - tx.meta.preBalances[houseIndex];
+        const receivedSol = receivedLamports / 1e9;
+
+        // Sender is always index 0 (fee payer) in any Solana transaction
+        const senderPubkey = accountKeys[0];
+        console.log(`[DEPOSIT] Sender: ${senderPubkey} | House received: ${receivedSol} SOL`);
+
+        if (senderPubkey !== wallet) {
+          console.warn(`[DEPOSIT ❌] Sender mismatch: ${senderPubkey} vs ${wallet}`);
+          throw new Error("Sender mismatch — transaction was not sent from your connected wallet.");
         }
 
-        // 2. Fetch full transaction details
-        console.log(`[DEPOSIT] 🔍 Fetching transaction details for audit...`);
-        const tx = await solConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
-        if (!tx) {
-          console.error(`[DEPOSIT ❌] Could not fetch tx data for ${signature}`);
-          return socket.emit("depositError", { message: "Failed to fetch transaction details. Please try again." });
+        if (receivedSol < amount * 0.99) {
+          console.warn(`[DEPOSIT ❌] Amount mismatch: received ${receivedSol}, expected ${amount}`);
+          throw new Error("Amount mismatch — received SOL does not match requested deposit.");
         }
 
-        let solTransferred = 0;
-        let foundRecipient = false;
-        let isCorrectSender = false;
-
-        // Check balance changes (most robust method)
-        console.log(`[DEPOSIT] ⚖️ Auditing balance changes...`);
-        const postIndex = tx.transaction.message.accountKeys.findIndex(k => k.pubkey.toBase58() === HOUSE_WALLET);
-        if (postIndex !== -1) {
-          const preBalance = tx.meta.preBalances[postIndex];
-          const postBalance = tx.meta.postBalances[postIndex];
-          solTransferred = (postBalance - preBalance) / 1e9;
-          foundRecipient = true;
-          console.log(`[DEPOSIT] House wallet received: ${solTransferred} SOL`);
-        }
-
-        // Verify sender
-        const senderIndex = tx.transaction.message.accountKeys.findIndex(k => k.signer === true);
-        if (senderIndex !== -1) {
-          const senderPubkey = tx.transaction.message.accountKeys[senderIndex].pubkey.toBase58();
-          console.log(`[DEPOSIT] Sender: ${senderPubkey}`);
-          if (senderPubkey === wallet) isCorrectSender = true;
-        }
-
-        if (!foundRecipient || solTransferred < amount - 0.001) {
-          console.warn(`[DEPOSIT ❌] Audit mismatch! Sent: ${solTransferred}, Expected: ${amount}, Recipient Match: ${foundRecipient}`);
-          return socket.emit("depositError", { message: "Verification failed: Recipient or Amount mismatch." });
-        }
-
-        if (!isCorrectSender) {
-          const senderPubkey = tx.transaction.message.accountKeys.find(k => k.signer === true)?.pubkey.toBase58();
-          console.warn(`[DEPOSIT ❌] Sender mismatch! Tx Sender: ${senderPubkey}, Connected Wallet: ${wallet}`);
-          return socket.emit("depositError", { message: "Verification failed: Sender mismatch." });
-        }
-
-        // ✅ All checks passed — credit casino balance
-        console.log(`[DEPOSIT] 🏦 Updating database for ${wallet.slice(0,8)}...`);
-        const account = await accountsModule.creditBalance(wallet, solTransferred, signature);
-        if (!account) {
-          console.error(`[DEPOSIT ❌] DB Update FAILED for ${wallet}`);
-          return socket.emit("depositError", { message: "SOL confirmed but database update failed. Contact support." });
-        }
-
-        await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: solTransferred, amount: solTransferred });
+        const account = await accountsModule.creditBalance(wallet, receivedSol, signature);
+        if (!account) throw new Error("Balance update failed — contact support with your signature.");
+        await accountsModule.addBetHistory(wallet, { game: 'Deposit', multiplier: null, profit: receivedSol, amount: receivedSol });
         
         socket.emit("accountUpdate", account);
-        socket.emit("depositSuccess", { amount: solTransferred });
-        console.log(`[DEPOSIT SUCCESS 🎉] ${wallet.slice(0, 6)} credited with ${solTransferred} SOL.\n`);
+        socket.emit("depositSuccess", { amount: receivedSol, account });
+        console.log(`[DEPOSIT SUCCESS 🎉] ${wallet.slice(0, 6)} credited with ${receivedSol} SOL.\n`);
         
       } catch (err) {
         console.error("[DEPOSIT ERROR ❌]", err.message);
-        socket.emit("depositError", { message: err.message || "Deposit verification error." });
+        // Never expose raw RPC errors (403 JSON, etc.) to the player UI
+        const isRpcError = err.message?.includes('403') ||
+          err.message?.toLowerCase().includes('forbidden') ||
+          err.message?.toLowerCase().includes('archive') ||
+          err.message?.toLowerCase().includes('jsonrpc');
+        const playerMessage = isRpcError
+          ? "Deposit received. Please wait a moment then refresh your casino balance."
+          : err.message || "Deposit verification error. Please try again.";
+        socket.emit("depositError", { message: playerMessage });
       }
     });
 
