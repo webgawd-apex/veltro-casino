@@ -149,10 +149,10 @@ app.prepare().then(async () => {
       try {
         let confirmedData = null;
         
-        // 1. Wait for confirmation (no searchTransactionHistory — avoids archive-tier 403)
+        // 1. Wait for confirmation
         console.log(`[DEPOSIT] ⏳ Waiting for blockchain confirmation...`);
         for (let i = 0; i < 30; i++) {
-          const statusRes = await solConnection.getSignatureStatus(signature);
+          const statusRes = await solConnection.getSignatureStatus(signature, { searchTransactionHistory: true });
           const status = statusRes?.value;
           
           if (status?.err) {
@@ -175,43 +175,33 @@ app.prepare().then(async () => {
           return socket.emit("depositError", { message: "Verification timeout. If debited, contact support with your signature." });
         }
 
-        // Small delay to ensure transaction is available in the confirmed block cache
-        await new Promise(r => setTimeout(r, 2000));
-
-        // 2. Fetch transaction details using getTransaction (works on free-tier RPC, no archive needed)
+        // 2. Fetch full transaction details
         console.log(`[DEPOSIT] 🔍 Fetching transaction details for audit...`);
-        let tx = null;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          tx = await solConnection.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
-          if (tx) break;
-          console.log(`[DEPOSIT] Tx not yet available, retry ${attempt + 1}/3...`);
-          await new Promise(r => setTimeout(r, 2000));
-        }
+        const tx = await solConnection.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0 });
         if (!tx) {
           console.error(`[DEPOSIT ❌] Could not fetch tx data for ${signature}`);
-          return socket.emit("depositError", { message: "Could not verify transaction details. Please contact support with your signature." });
+          return socket.emit("depositError", { message: "Failed to fetch transaction details. Please try again." });
         }
 
         let solTransferred = 0;
         let foundRecipient = false;
         let isCorrectSender = false;
 
-        // Parse account keys from raw transaction
+        // Check balance changes (most robust method)
         console.log(`[DEPOSIT] ⚖️ Auditing balance changes...`);
-        const accountKeys = tx.transaction.message.accountKeys.map(k => typeof k === 'string' ? k : k.toBase58());
-        
-        const houseIndex = accountKeys.findIndex(k => k === HOUSE_WALLET);
-        if (houseIndex !== -1) {
-          const preBalance = tx.meta.preBalances[houseIndex];
-          const postBalance = tx.meta.postBalances[houseIndex];
+        const postIndex = tx.transaction.message.accountKeys.findIndex(k => k.pubkey.toBase58() === HOUSE_WALLET);
+        if (postIndex !== -1) {
+          const preBalance = tx.meta.preBalances[postIndex];
+          const postBalance = tx.meta.postBalances[postIndex];
           solTransferred = (postBalance - preBalance) / 1e9;
           foundRecipient = true;
           console.log(`[DEPOSIT] House wallet received: ${solTransferred} SOL`);
         }
 
-        // Verify sender (first signer is index 0 in a standard transfer)
-        const senderPubkey = accountKeys[0];
-        if (senderPubkey) {
+        // Verify sender
+        const senderIndex = tx.transaction.message.accountKeys.findIndex(k => k.signer === true);
+        if (senderIndex !== -1) {
+          const senderPubkey = tx.transaction.message.accountKeys[senderIndex].pubkey.toBase58();
           console.log(`[DEPOSIT] Sender: ${senderPubkey}`);
           if (senderPubkey === wallet) isCorrectSender = true;
         }
@@ -222,6 +212,7 @@ app.prepare().then(async () => {
         }
 
         if (!isCorrectSender) {
+          const senderPubkey = tx.transaction.message.accountKeys.find(k => k.signer === true)?.pubkey.toBase58();
           console.warn(`[DEPOSIT ❌] Sender mismatch! Tx Sender: ${senderPubkey}, Connected Wallet: ${wallet}`);
           return socket.emit("depositError", { message: "Verification failed: Sender mismatch." });
         }
@@ -241,8 +232,8 @@ app.prepare().then(async () => {
         console.log(`[DEPOSIT SUCCESS 🎉] ${wallet.slice(0, 6)} credited with ${solTransferred} SOL.\n`);
         
       } catch (err) {
-        console.error("[DEPOSIT ERROR ❌]", err);
-        socket.emit("depositError", { message: "Deposit verification failed. Please try again or contact support." });
+        console.error("[DEPOSIT ERROR ❌]", err.message);
+        socket.emit("depositError", { message: err.message || "Deposit verification error." });
       }
     });
 
