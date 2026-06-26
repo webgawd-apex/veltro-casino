@@ -127,24 +127,6 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
 
 
 
-  // Retry helper: retries an async fn on 429 rate-limit errors with exponential backoff
-  const withRetry = async (fn, maxAttempts = 4, baseDelayMs = 600) => {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return await fn();
-      } catch (err) {
-        const is429 = err?.message?.includes('429') || err?.message?.toLowerCase().includes('rate limit');
-        if (is429 && attempt < maxAttempts) {
-          const delay = baseDelayMs * Math.pow(2, attempt - 1); // 600 → 1200 → 2400 → 4800ms
-          console.warn(`[RPC] 429 rate limit hit, retrying in ${delay}ms (attempt ${attempt}/${maxAttempts})...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          throw err;
-        }
-      }
-    }
-  };
-
   const handleDeposit = async () => {
     if (!adapterPublicKey || !sendTransaction) {
       setStatusMsg({ type: 'error', text: 'Please connect your wallet first.' });
@@ -160,8 +142,7 @@ export default function ProfileDrawer({ open, onClose, mobilePublicKey, disconne
       const parsedAmount = parseFloat(amount);
       const lamports = Math.floor(parsedAmount * LAMPORTS_PER_SOL);
 
-      // Wrapped in retry logic to handle RPC 429 rate-limit errors gracefully
-      const { blockhash } = await withRetry(() => connection.getLatestBlockhash('confirmed'));
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
 
       const transaction = new Transaction({
         feePayer: adapterPublicKey,
